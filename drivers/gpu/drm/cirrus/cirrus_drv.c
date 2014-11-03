@@ -32,8 +32,6 @@ static struct drm_driver driver;
 static DEFINE_PCI_DEVICE_TABLE(pciidlist) = {
 	{ PCI_VENDOR_ID_CIRRUS, PCI_DEVICE_ID_CIRRUS_5446, 0x1af4, 0x1100, 0,
 	  0, 0 },
-	{ PCI_VENDOR_ID_CIRRUS, PCI_DEVICE_ID_CIRRUS_5446, PCI_VENDOR_ID_XEN,
-	  0x0001, 0, 0, 0 },
 	{0,}
 };
 
@@ -139,6 +137,11 @@ static struct drm_driver driver = {
 	.dumb_create = cirrus_dumb_create,
 	.dumb_map_offset = cirrus_dumb_mmap_offset,
 	.dumb_destroy = drm_gem_dumb_destroy,
+};
+
+static const struct dev_pm_ops cirrus_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(cirrus_pm_suspend,
+				cirrus_pm_resume)
 };
 
 static const struct dev_pm_ops cirrus_pm_ops = {

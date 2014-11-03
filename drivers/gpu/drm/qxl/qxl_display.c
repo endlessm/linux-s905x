@@ -523,10 +523,11 @@ static int qxl_crtc_mode_set(struct drm_crtc *crtc,
 	struct qxl_framebuffer *qfb;
 	struct qxl_bo *bo, *old_bo = NULL;
 	struct qxl_crtc *qcrtc = to_qxl_crtc(crtc);
+	uint32_t width, height, base_offset;
 	bool recreate_primary = false;
 	int ret;
 	int surf_id;
-	if (!crtc->fb) {
+	if (!crtc->primary->fb) {
 		DRM_DEBUG_KMS("No FB bound\n");
 		return 0;
 	}
@@ -535,7 +536,7 @@ static int qxl_crtc_mode_set(struct drm_crtc *crtc,
 		qfb = to_qxl_framebuffer(old_fb);
 		old_bo = gem_to_qxl_bo(qfb->obj);
 	}
-	qfb = to_qxl_framebuffer(crtc->fb);
+	qfb = to_qxl_framebuffer(crtc->primary->fb);
 	bo = gem_to_qxl_bo(qfb->obj);
 	if (!m)
 		/* and do we care? */
@@ -552,10 +553,9 @@ static int qxl_crtc_mode_set(struct drm_crtc *crtc,
 	if (qcrtc->index == 0)
 		recreate_primary = true;
 
-	if (bo->surf.stride * bo->surf.height > qdev->vram_size) {
-		DRM_ERROR("Mode doesn't fit in vram size (vgamem)");
-		return -EINVAL;
-        }
+	width = mode->hdisplay;
+	height = mode->vdisplay;
+	base_offset = 0;
 
 	ret = qxl_bo_reserve(bo, false);
 	if (ret != 0)
@@ -569,11 +569,15 @@ static int qxl_crtc_mode_set(struct drm_crtc *crtc,
 	if (recreate_primary) {
 		qxl_io_destroy_primary(qdev);
 		qxl_io_log(qdev,
-			   "recreate primary: %dx%d,%d,%d\n",
-			   bo->surf.width, bo->surf.height,
-			   bo->surf.stride, bo->surf.format);
-		qxl_io_create_primary(qdev, 0, bo);
+			   "recreate primary: %dx%d (was %dx%d,%d,%d)\n",
+			   width, height, bo->surf.width,
+			   bo->surf.height, bo->surf.stride, bo->surf.format);
+		qxl_io_create_primary(qdev, base_offset, bo);
 		bo->is_primary = true;
+	}
+
+	if (bo->is_primary) {
+		DRM_DEBUG_KMS("setting surface_id to 0 for primary surface %d on crtc %d\n", bo->surface_id, qcrtc->index);
 		surf_id = 0;
 	} else {
 		surf_id = bo->surface_id;
@@ -609,14 +613,14 @@ static void qxl_crtc_disable(struct drm_crtc *crtc)
 	struct qxl_crtc *qcrtc = to_qxl_crtc(crtc);
 	struct drm_device *dev = crtc->dev;
 	struct qxl_device *qdev = dev->dev_private;
-	if (crtc->fb) {
-		struct qxl_framebuffer *qfb = to_qxl_framebuffer(crtc->fb);
+	if (crtc->primary->fb) {
+		struct qxl_framebuffer *qfb = to_qxl_framebuffer(crtc->primary->fb);
 		struct qxl_bo *bo = gem_to_qxl_bo(qfb->obj);
 		int ret;
 		ret = qxl_bo_reserve(bo, false);
 		qxl_bo_unpin(bo);
 		qxl_bo_unreserve(bo);
-		crtc->fb = NULL;
+		crtc->primary->fb = NULL;
 	}
 
 	qxl_monitors_config_set(qdev, qcrtc->index, 0, 0, 0, 0, 0);
@@ -841,7 +845,7 @@ static const struct drm_connector_funcs qxl_connector_funcs = {
 	.save = qxl_conn_save,
 	.restore = qxl_conn_restore,
 	.detect = qxl_conn_detect,
-	.fill_modes = drm_helper_probe_single_connector_modes,
+	.fill_modes = drm_helper_probe_single_connector_modes_nomerge,
 	.set_property = qxl_conn_set_property,
 	.destroy = qxl_conn_destroy,
 };
