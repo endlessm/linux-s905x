@@ -99,6 +99,7 @@ int radeon_uvd_init(struct radeon_device *rdev)
 	case CHIP_KABINI:
 	case CHIP_KAVERI:
 	case CHIP_HAWAII:
+	case CHIP_MULLINS:
 		fw_name = FIRMWARE_BONAIRE;
 		break;
 
@@ -168,7 +169,6 @@ void radeon_uvd_fini(struct radeon_device *rdev)
 		radeon_bo_unpin(rdev->uvd.vcpu_bo);
 		radeon_bo_unreserve(rdev->uvd.vcpu_bo);
 	}
-
 	radeon_bo_unref(&rdev->uvd.vcpu_bo);
 
 	radeon_ring_fini(rdev, &rdev->ring[R600_RING_TYPE_UVD_INDEX]);
@@ -212,11 +212,44 @@ int radeon_uvd_resume(struct radeon_device *rdev)
 	if (rdev->uvd.vcpu_bo == NULL)
 		return -EINVAL;
 
+<<<<<<< HEAD
+	memcpy(rdev->uvd.cpu_addr, rdev->uvd_fw->data, rdev->uvd_fw->size);
+||||||| parent of 6b247f2... drm: backport from 3.16
+	r = radeon_bo_reserve(rdev->uvd.vcpu_bo, false);
+	if (r) {
+		radeon_bo_unref(&rdev->uvd.vcpu_bo);
+		dev_err(rdev->dev, "(%d) failed to reserve UVD bo\n", r);
+		return r;
+	}
+
+	/* Have been pin in cpu unmap unpin */
+	radeon_bo_kunmap(rdev->uvd.vcpu_bo);
+	radeon_bo_unpin(rdev->uvd.vcpu_bo);
+=======
 	memcpy(rdev->uvd.cpu_addr, rdev->uvd_fw->data, rdev->uvd_fw->size);
 
 	size = radeon_bo_size(rdev->uvd.vcpu_bo);
 	size -= rdev->uvd_fw->size;
+>>>>>>> 6b247f2... drm: backport from 3.16
 
+<<<<<<< HEAD
+	size = radeon_bo_size(rdev->uvd.vcpu_bo);
+	size -= rdev->uvd_fw->size;
+||||||| parent of 6b247f2... drm: backport from 3.16
+	r = radeon_bo_pin(rdev->uvd.vcpu_bo, RADEON_GEM_DOMAIN_VRAM,
+			  &rdev->uvd.gpu_addr);
+	if (r) {
+		radeon_bo_unreserve(rdev->uvd.vcpu_bo);
+		radeon_bo_unref(&rdev->uvd.vcpu_bo);
+		dev_err(rdev->dev, "(%d) UVD bo pin failed\n", r);
+		return r;
+	}
+=======
+	ptr = rdev->uvd.cpu_addr;
+	ptr += rdev->uvd_fw->size;
+>>>>>>> 6b247f2... drm: backport from 3.16
+
+<<<<<<< HEAD
 	ptr = rdev->uvd.cpu_addr;
 	ptr += rdev->uvd_fw->size;
 
@@ -226,6 +259,22 @@ int radeon_uvd_resume(struct radeon_device *rdev)
 		rdev->uvd.saved_bo = NULL;
 	} else
 		memset(ptr, 0, size);
+||||||| parent of 6b247f2... drm: backport from 3.16
+	r = radeon_bo_kmap(rdev->uvd.vcpu_bo, &rdev->uvd.cpu_addr);
+	if (r) {
+		dev_err(rdev->dev, "(%d) UVD map failed\n", r);
+		return r;
+	}
+
+	radeon_bo_unreserve(rdev->uvd.vcpu_bo);
+=======
+	if (rdev->uvd.saved_bo != NULL) {
+		memcpy(ptr, rdev->uvd.saved_bo, size);
+		kfree(rdev->uvd.saved_bo);
+		rdev->uvd.saved_bo = NULL;
+	} else
+		memset(ptr, 0, size);
+>>>>>>> 6b247f2... drm: backport from 3.16
 
 	return 0;
 }
@@ -455,7 +504,7 @@ static int radeon_uvd_cs_reloc(struct radeon_cs_parser *p,
 	}
 
 	reloc = p->relocs_ptr[(idx / 4)];
-	start = reloc->lobj.gpu_offset;
+	start = reloc->gpu_offset;
 	end = start + radeon_bo_size(reloc->robj);
 	start += offset;
 
