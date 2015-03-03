@@ -297,6 +297,7 @@ static wait_queue_head_t amstream_userdata_wait;
 #define USERDATA_FIFO_NUM    1024
 static struct userdata_poc_info_t userdata_poc_info[USERDATA_FIFO_NUM];
 static int userdata_poc_ri = 0, userdata_poc_wi;
+typedef struct stream_port_s stream_port_t;
 
 static struct stream_port_s ports[] = {
 	{
@@ -348,6 +349,19 @@ static struct stream_port_s ports[] = {
 		.vformat = VFORMAT_HEVC,
 	},
 };
+
+stream_port_t *amstream_find_port(const char *name)
+{
+	stream_port_t *s;
+	int i;
+
+	for (s = &ports[0], i = 0; i < amstream_port_num; i++, s++) {
+		if (strcmp(name, s->name) == 0)
+			return s;
+	}
+
+	return NULL;
+}
 
 static struct stream_buf_s bufs[BUF_MAX_NUM] = {
 	{
