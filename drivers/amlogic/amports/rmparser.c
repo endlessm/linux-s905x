@@ -205,7 +205,7 @@ static ssize_t _rmparser_write(const char __user *buf, size_t count)
 			("write timeout,retry,halt_count=%d parse_control=%x\n",
 			 parse_halt, READ_MPEG_REG(PARSER_CONTROL));
 
-			vreal_set_fatal_flag(1);
+			//vreal_set_fatal_flag(1);
 
 			if (parse_halt > 10) {
 				WRITE_MPEG_REG(PARSER_CONTROL,
