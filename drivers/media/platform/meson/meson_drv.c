@@ -18,6 +18,7 @@
 #include <linux/amlogic/amports/amstream.h>
 #include <linux/amlogic/amports/vformat.h>
 #include <linux/amlogic/amports/vframe_provider.h>
+#include <linux/amlogic/amports/dsp_register.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-event.h>
@@ -106,6 +107,8 @@ enum eos_state {
 	EOS_NONE,
 	EOS_TAIL_WAITING,
 	EOS_TAIL_SENT,
+	EOS_WAIT_IDLE,
+	EOS_DETECTED,
 };
 
 struct vdec_ctx {
@@ -113,6 +116,7 @@ struct vdec_ctx {
 	struct vdec_dev	*dev;
 	struct v4l2_m2m_ctx	*m2m_ctx;
 	struct task_struct *image_thread;
+	struct timer_list eos_idle_timer;
 	struct vframe_receiver_s vf_receiver;
 
 	void *buf_vaddr;
@@ -147,6 +151,16 @@ static inline struct vdec_ctx *file2ctx(struct file *file)
  * hold onto the final few frames. When userspace drains the decoder at EOF
  * on the OUTPUT side via V4L2_DEC_CMD_STOP, we send a special tail
  * sequence just like Amlogic's libplayer does. Then the final frames arrive.
+ *
+ * Now we are tasked with detecting which of the frames is the last one,
+ * of which we get no strong indication. The VIFIFO becomes empty several
+ * frames before the final one is presented by the decoder. We resort to
+ * time-based polling to try to understand when the decoder has truly
+ * finished. We try to find a 100ms period where these conditions are met:
+ * 1. VIFIFO is empty
+ * 2. Decoder is not paused because it was starved of output buffers
+ * 3. No new output buffers were made available during this time
+ * 4. No new frames were presented during this time
  */
 static void send_eos_tail(struct vdec_ctx *ctx)
 {
@@ -154,6 +168,37 @@ static void send_eos_tail(struct vdec_ctx *ctx)
 	ctx->eos_state = EOS_TAIL_SENT;
 	esparser_start_search(PARSER_VIDEO, ctx->eos_tail_buf_phys,
 			      EOS_TAIL_BUF_SIZE);
+}
+
+static void run_eos_idle_timer(struct vdec_ctx *ctx)
+{
+	mod_timer(&ctx->eos_idle_timer, jiffies + (HZ / 10));
+}
+
+static void eos_check_idle(unsigned long arg)
+{
+	struct vdec_ctx *ctx = (struct vdec_ctx *) arg;
+	struct vb2_buffer *buf;
+
+	/* The VIFIFO level does not reach 0 at the end of playback, it
+	 * always seems to have a small amount of data there which does not
+	 * get flushed. So we use a low threshold to detect VIFIFO empty.
+	 * FIXME: experiment and check that 256 bytes is the upper limit here
+	 * before the data is actually flushed. */
+	if (vf_peek(RECEIVER_NAME) ||
+	    READ_VREG(VLD_MEM_VIFIFO_LEVEL) > 256 ||
+	    vh264_output_is_starved()) {
+		run_eos_idle_timer(ctx);
+		return;
+	}
+
+	v4l2_info(&ctx->dev->v4l2_dev, "EOS detected\n");
+	ctx->eos_state = EOS_DETECTED;
+	while ((buf = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx))) {
+		vb2_set_plane_payload(buf, 0, 0);
+		v4l2_m2m_buf_done(buf, VB2_BUF_STATE_DONE);
+	}
+
 }
 
 /*
@@ -174,8 +219,12 @@ static void parser_cb(void *data)
 	}
 
 	if (ctx->eos_state == EOS_TAIL_WAITING &&
-	    v4l2_m2m_num_src_bufs_ready(ctx->m2m_ctx) == 0)
+	    v4l2_m2m_num_src_bufs_ready(ctx->m2m_ctx) == 0) {
 		send_eos_tail(ctx);
+	} else if (ctx->eos_state == EOS_TAIL_SENT) {
+		ctx->eos_state = EOS_WAIT_IDLE;
+		run_eos_idle_timer(ctx);
+	}
 }
 
 // FIXME should be a VF message
@@ -710,7 +759,17 @@ static void vdec_dst_buf_queue(struct vb2_buffer *vb)
 	struct vdec_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
 	v4l2_info(&ctx->dev->v4l2_dev, "dst_buf_queue %d\n", vb->v4l2_buf.index);
 
+	if (ctx->eos_state == EOS_DETECTED) {
+		vb2_set_plane_payload(vb, 0, 0);
+		v4l2_m2m_buf_done(vb, VB2_BUF_STATE_DONE);
+		return;
+	}
+
 	v4l2_m2m_buf_queue(ctx->m2m_ctx, vb);
+
+	if (ctx->eos_state == EOS_WAIT_IDLE)
+		run_eos_idle_timer(ctx);
+
 	wake_up_process(ctx->image_thread);
 }
 
@@ -838,6 +897,9 @@ static int vf_receiver_event(int type, void *data, void *user_data)
 		return (ctx->src_streaming && ctx->dst_streaming)
 			? RECEIVER_ACTIVE : RECEIVER_INACTIVE;
 	case VFRAME_EVENT_PROVIDER_VFRAME_READY:
+		if (ctx->eos_state == EOS_WAIT_IDLE)
+			run_eos_idle_timer(ctx);
+
 		wake_up_process(ctx->image_thread);
 		break;
 	}
@@ -879,8 +941,13 @@ static int meson_vdec_open(struct file *file)
 	ctx->dev = dev;
 	ctx->hdr_parse_state = HEADER_NOT_PARSED;
 
+	init_timer(&ctx->eos_idle_timer);
+	ctx->eos_idle_timer.function = eos_check_idle;
+	ctx->eos_idle_timer.data = (unsigned long) ctx;
+
 	ctx->buf_vaddr = dma_alloc_coherent(dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE,
 					    (dma_addr_t *) &sbuf->buf_start, GFP_KERNEL);
+
 	if (!ctx->buf_vaddr) {
 		ret = -ENOMEM;
 		goto err_free_ctx;
@@ -943,6 +1010,7 @@ static int meson_vdec_release(struct file *file)
 
 	v4l2_info(&ctx->dev->v4l2_dev, "vdec_release\n");
 
+	del_timer_sync(&ctx->eos_idle_timer);
 	amstream_port_release(amstream_find_port("amstream_vbuf"));
 	vf_unreg_receiver(&ctx->vf_receiver);
 	v4l2_fh_del(&ctx->fh);
