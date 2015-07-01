@@ -341,6 +341,9 @@ static int vidioc_enum_fmt_vid_cap(struct file *file, void *priv,
 	struct vdec_ctx *ctx = file2ctx(file);
 	v4l2_info(&ctx->dev->v4l2_dev, "enum_fmt_vid_cap\n");
 
+        if (f->index != 0)
+		return -EINVAL;
+
 	snprintf(f->description, sizeof(f->description), "ARGB");
 	f->pixelformat = V4L2_PIX_FMT_RGB32;
 	return 0;
@@ -351,6 +354,9 @@ static int vidioc_enum_fmt_vid_out(struct file *file, void *priv,
 {
 	struct vdec_ctx *ctx = file2ctx(file);
 	v4l2_info(&ctx->dev->v4l2_dev, "enum_fmt_vid_out\n");
+
+        if (f->index != 0)
+		return -EINVAL;
 
 	snprintf(f->description, sizeof(f->description), "H264");
 	f->pixelformat = V4L2_PIX_FMT_H264;
