@@ -39,8 +39,8 @@
  */
 static void mali_plat_preheat(void);
 static mali_plat_info_t mali_plat_data = {
-    .bst_gpu = 210, /* threshold for boosting gpu. */
-    .bst_pp = 160, /* threshold for boosting PP. */
+    .bst_gpu = 1, /* threshold for boosting gpu. */
+    .bst_pp = 1, /* threshold for boosting PP. */
     .have_switch = 1,
     .limit_on = 1,
     .plat_preheat = mali_plat_preheat,
