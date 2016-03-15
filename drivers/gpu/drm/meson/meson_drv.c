@@ -593,7 +593,7 @@ static struct osd_plane_def osd_plane_defs[] = {
 		.canvas_index = 0x4e,
 		.vpp_misc_postblend = VPP_OSD1_POSTBLEND,
 		{
-#define M(n) .n = P_VIU_OSD1_##n ,
+#define M(n) .n = VIU_OSD1_##n ,
 			OSD_REGISTERS
 #undef M
 		}
@@ -604,7 +604,7 @@ static struct osd_plane_def osd_plane_defs[] = {
 		.canvas_index = 0x4f,
 		.vpp_misc_postblend = VPP_OSD2_POSTBLEND,
 		{
-#define M(n) .n = P_VIU_OSD2_##n ,
+#define M(n) .n = VIU_OSD2_##n ,
 			OSD_REGISTERS
 #undef M
 		}
@@ -738,9 +738,9 @@ static void write_scaling_filter_coefs(const unsigned int *coefs,
 {
 	int i;
 
-	aml_write_reg32(P_VPP_OSD_SCALE_COEF_IDX, (is_horizontal ? 1 : 0) << 8);
+	osd_reg_write(VPP_OSD_SCALE_COEF_IDX, (is_horizontal ? 1 : 0) << 8);
 	for (i = 0; i < 33; i++)
-		aml_write_reg32(P_VPP_OSD_SCALE_COEF, coefs[i]);
+		osd_reg_write(VPP_OSD_SCALE_COEF, coefs[i]);
 }
 
 static unsigned int vpp_filter_coefs_4point_bspline[] = {
@@ -764,9 +764,9 @@ static void reset_vpp(void)
 {
 	/* Turn off the HW scalers -- U-Boot turns these on and we
 	 * need to clear them to make things work. */
-	aml_clr_reg32_mask(P_VPP_OSD_SC_CTRL0, 1 << 3);
-	aml_clr_reg32_mask(P_VPP_OSD_VSC_CTRL0, 1 << 24);
-	aml_clr_reg32_mask(P_VPP_OSD_HSC_CTRL0, 1 << 22);
+	osd_reg_clr_mask(VPP_OSD_SC_CTRL0, 1 << 3);
+	osd_reg_clr_mask(VPP_OSD_VSC_CTRL0, 1 << 24);
+	osd_reg_clr_mask(VPP_OSD_HSC_CTRL0, 1 << 22);
 
 	BUILD_BUG_ON(ARRAY_SIZE(vpp_filter_coefs_4point_bspline) != 33);
 	/* Write in the proper filter coefficients. */
@@ -775,14 +775,14 @@ static void reset_vpp(void)
 
 	/* Force all planes off -- U-Boot might configure them and
 	 * we shouldn't have any stale planes. */
-	aml_clr_reg32_mask(P_VPP_MISC, VPP_OSD1_POSTBLEND | VPP_OSD2_POSTBLEND);
-	aml_clr_reg32_mask(P_VPP_MISC, VPP_VD1_POSTBLEND | VPP_VD2_POSTBLEND);
+	osd_reg_clr_mask(VPP_MISC, VPP_OSD1_POSTBLEND | VPP_OSD2_POSTBLEND);
+	osd_reg_clr_mask(VPP_MISC, VPP_VD1_POSTBLEND | VPP_VD2_POSTBLEND);
 
 	/* Turn on POSTBLEND. */
-	aml_set_reg32_mask(P_VPP_MISC, VPP_POSTBLEND_EN);
+	osd_reg_set_mask(VPP_MISC, VPP_POSTBLEND_EN);
 
 	/* Put OSD2 (cursor) on top of OSD1. */
-	aml_set_reg32_mask(P_VPP_MISC, VPP_POST_FG_OSD2 | VPP_PRE_FG_OSD2);
+	osd_reg_set_mask(VPP_MISC, VPP_POST_FG_OSD2 | VPP_PRE_FG_OSD2);
 
 	/* In its default configuration, the display controller can be starved
 	 * of memory bandwidth when the CPU and GPU are busy, causing scanout
@@ -790,11 +790,11 @@ static void reset_vpp(void)
 	 * display appearing momentarily shifted to the right).
 	 * Increase the priority and burst size of RAM access using the same
 	 * values as Amlogic's driver. */
-	aml_set_reg32_mask(P_VIU_OSD1_FIFO_CTRL_STAT,
+	osd_reg_set_mask(VIU_OSD1_FIFO_CTRL_STAT,
 			   1 << 0 | /* Urgent DDR request priority */
 			   3 << 10 /* Increase burst length from 24 to 64 */
 			   );
-	aml_set_reg32_mask(P_VIU_OSD2_FIFO_CTRL_STAT,
+	osd_reg_set_mask(VIU_OSD2_FIFO_CTRL_STAT,
 			   1 << 0 | /* Urgent DDR request priority */
 			   3 << 10 /* Increase burst length from 24 to 64 */
 			   );
@@ -803,8 +803,8 @@ static void reset_vpp(void)
 	 * after vsync before starting RAM access. This gives the vsync
 	 * interrupt handler more time to update the registers, avoiding
 	 * visual glitches. */
-	aml_set_reg32_bits(P_VIU_OSD1_FIFO_CTRL_STAT, 12, 5, 5);
-	aml_set_reg32_bits(P_VIU_OSD2_FIFO_CTRL_STAT, 12, 5, 5);
+	osd_reg_set_bits(VIU_OSD1_FIFO_CTRL_STAT, 12, 5, 5);
+	osd_reg_set_bits(VIU_OSD2_FIFO_CTRL_STAT, 12, 5, 5);
 }
 
 static ssize_t meson_get_underscan_hborder(struct device *dev,
@@ -1037,49 +1037,49 @@ static void update_scaler(struct drm_crtc *crtc)
 		}
 
 		/* Basic scaler config */
-		aml_write_reg32(P_VPP_OSD_SC_CTRL0,
-				(1 << 3) /* Enable scaler */ |
-				(0 << 2) /* Select OSD1 */);
-		aml_write_reg32(P_VPP_OSD_SCI_WH_M1,
-				((drm_rect_width(&input) - 1) << 16) | (drm_rect_height(&input) - 1));
-		aml_write_reg32(P_VPP_OSD_SCO_H_START_END, ((output.x1) << 16) | (output.x2));
-		aml_write_reg32(P_VPP_OSD_SCO_V_START_END, ((output.y1) << 16) | (output.y2));
+		osd_reg_write(VPP_OSD_SC_CTRL0,
+			      (1 << 3) /* Enable scaler */ |
+			      (0 << 2) /* Select OSD1 */);
+		osd_reg_write(VPP_OSD_SCI_WH_M1,
+			      ((drm_rect_width(&input) - 1) << 16) | (drm_rect_height(&input) - 1));
+		osd_reg_write(VPP_OSD_SCO_H_START_END, ((output.x1) << 16) | (output.x2));
+		osd_reg_write(VPP_OSD_SCO_V_START_END, ((output.y1) << 16) | (output.y2));
 
 		/* HSC */
 		if (input.x1 != output.x1 || input.x2 != output.x2) {
 			int hf_phase_step = ((drm_rect_width(&input) << 18) / drm_rect_width(&output));
-			aml_write_reg32(P_VPP_OSD_HSC_PHASE_STEP, hf_phase_step << 6);
+			osd_reg_write(VPP_OSD_HSC_PHASE_STEP, hf_phase_step << 6);
 
-			aml_write_reg32(P_VPP_OSD_HSC_CTRL0,
-					(4 << 0) /* osd_hsc_bank_length */ |
-					(4 << 3) /* osd_hsc_ini_rcv_num0 */ |
-					(1 << 8) /* osd_hsc_rpt_p0_num0 */ |
-					(1 << 22) /* Enable horizontal scaler */);
+			osd_reg_write(VPP_OSD_HSC_CTRL0,
+				      (4 << 0) /* osd_hsc_bank_length */ |
+				      (4 << 3) /* osd_hsc_ini_rcv_num0 */ |
+				      (1 << 8) /* osd_hsc_rpt_p0_num0 */ |
+				      (1 << 22) /* Enable horizontal scaler */);
 		} else {
-			aml_write_reg32(P_VPP_OSD_HSC_CTRL0, 0);
+			osd_reg_write(VPP_OSD_HSC_CTRL0, 0);
 		}
 
 		/* VSC */
 		if (input.y1 != output.y1 || input.y2 != output.y2) {
 			int vf_phase_step = ((drm_rect_height(&input) << 20) / drm_rect_height(&output));
 
-			aml_write_reg32(P_VPP_OSD_VSC_INI_PHASE, interlace ? (vf_phase_step >> 5) : 0);
-			aml_write_reg32(P_VPP_OSD_VSC_PHASE_STEP, vf_phase_step << 4);
+			osd_reg_write(VPP_OSD_VSC_INI_PHASE, interlace ? (vf_phase_step >> 5) : 0);
+			osd_reg_write(VPP_OSD_VSC_PHASE_STEP, vf_phase_step << 4);
 
-			aml_write_reg32(P_VPP_OSD_VSC_CTRL0,
-					(4 << 0) /* osd_vsc_bank_length */ |
-					(4 << 3) /* osd_vsc_top_ini_rcv_num0 */ |
-					(1 << 8) /* osd_vsc_top_rpt_p0_num0 */ |
-					(6 << 11) /* osd_vsc_bot_ini_rcv_num0 */ |
-					(2 << 16) /* osd_vsc_bot_rpt_p0_num0 */ |
-					((interlace ? 1 : 0) << 23) /* osd_prog_interlace */ |
-					(1 << 24) /* Enable vertical scaler */);
+			osd_reg_write(VPP_OSD_VSC_CTRL0,
+				      (4 << 0) /* osd_vsc_bank_length */ |
+				      (4 << 3) /* osd_vsc_top_ini_rcv_num0 */ |
+				      (1 << 8) /* osd_vsc_top_rpt_p0_num0 */ |
+				      (6 << 11) /* osd_vsc_bot_ini_rcv_num0 */ |
+				      (2 << 16) /* osd_vsc_bot_rpt_p0_num0 */ |
+				      ((interlace ? 1 : 0) << 23) /* osd_prog_interlace */ |
+				      (1 << 24) /* Enable vertical scaler */);
 		} else {
-			aml_write_reg32(P_VPP_OSD_VSC_CTRL0, 0);
+			osd_reg_write(VPP_OSD_VSC_CTRL0, 0);
 		}
 	} else {
-		aml_write_reg32(P_VPP_OSD_SC_CTRL0,
-				(0 << 3) /* Disable scaler */);
+		osd_reg_write(VPP_OSD_SC_CTRL0,
+			      (0 << 3) /* Disable scaler */);
 	}
 }
 
@@ -1105,14 +1105,14 @@ static void update_plane_shadow_registers(struct drm_plane *plane)
 			meson_plane->fb_changed = false;
 		}
 
-		aml_set_reg32_mask(P_VPP_MISC, meson_plane->def->vpp_misc_postblend);
+		osd_reg_set_mask(VPP_MISC, meson_plane->def->vpp_misc_postblend);
 
 		/* Copy the shadow registers into the real registers. */
-#define M(n) aml_write_reg32(meson_plane->def->reg.n, meson_plane->reg.n);
+#define M(n) osd_reg_write(meson_plane->def->reg.n, meson_plane->reg.n);
 OSD_REGISTERS
 #undef M
 	} else {
-		aml_clr_reg32_mask(P_VPP_MISC, meson_plane->def->vpp_misc_postblend);
+		osd_reg_clr_mask(VPP_MISC, meson_plane->def->vpp_misc_postblend);
 	}
 }
 
@@ -1121,7 +1121,7 @@ static void update_interlaced_field(struct drm_plane *plane)
 	struct meson_plane *meson_plane = to_meson_plane(plane);
 
 	if (meson_plane->interlacing_strategy != MESON_INTERLACING_STRATEGY_NONE) {
-		int field = aml_read_reg32(P_ENCI_INFO_READ) & (1 << 29);
+		int field = osd_reg_read(ENCI_INFO_READ) & (1 << 29);
 		meson_plane->reg.BLK0_CFG_W0 = ((meson_plane->reg.BLK0_CFG_W0 & ~0x01) |
 						(field ? OSD_INTERLACE_ODD : OSD_INTERLACE_EVEN));
 	}
