@@ -296,7 +296,7 @@ struct drm_connector *meson_hdmi_connector_create(struct drm_device *dev,
 	struct meson_connector *meson_connector;
 	struct drm_connector *connector;
         struct drm_encoder *encoder;
-	int ret;
+	int ret, irq_hpd;
 
 	/* Clear the VIC field of the AVI InfoFrame, which the boot loader
 	 * might have configured. This has been seen to cause EDID read
@@ -332,7 +332,14 @@ struct drm_connector *meson_hdmi_connector_create(struct drm_device *dev,
 
 	INIT_DELAYED_WORK(&meson_connector->hotplug_work, hdmi_hotplug_work_func);
 
-	ret = devm_request_threaded_irq(dev->dev, INT_HDMI_TX, NULL, meson_hdmi_intr_handler,
+	irq_hpd = platform_get_irq_byname(dev->platformdev, "hdmitx_hpd");
+	if (irq_hpd == -ENXIO) {
+		pr_err("%s: ERROR: hdmitx hpd irq No not found\n" ,
+			__func__);
+		return NULL;
+	}
+
+	ret = devm_request_threaded_irq(dev->dev, irq_hpd, NULL, meson_hdmi_intr_handler,
 					IRQF_ONESHOT, dev_name(dev->dev), connector);
 	if (ret < 0)
 		goto fail;
