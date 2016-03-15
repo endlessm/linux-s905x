@@ -163,76 +163,21 @@ static enum drm_connector_status meson_connector_detect(struct drm_connector *co
 	return read_hpd_gpio() ? connector_status_connected : connector_status_disconnected;
 }
 
-static int fetch_edid(void)
-{
-	int i;
-
-	/* Turn on the EDID power. */
-	hd_set_reg_bits(P_HHI_MEM_PD_REG0, 0, 8, 2);
-
-	/* Ask for EDID by setting sys_config_trigger high. */
-	hdmi_set_reg_bits(TX_HDCP_EDID_CONFIG, 1, 6, 1);
-
-	/* XXX: Figure out how to turn on the EDID interrupt */
-	for (i = 0; i < 5; i++) {
-		msleep(200);
-
-		if (hdmi_rd_reg(TX_HDCP_ST_EDID_STATUS) & (1 << 4))
-			break;
-	}
-
-	if (!(hdmi_rd_reg(TX_HDCP_ST_EDID_STATUS) & (1 << 4))) {
-		WARN(1, "Could not fetch EDID after 1 second\n");
-		return -1;
-	}
-
-	return 0;
-}
-
-#define EDID_BLOCKS 4
-#define EDID_BUF_LENGTH (EDID_LENGTH * EDID_BLOCKS)
-
-static bool read_edid(uint8_t *edid_buf)
-{
-	int i;
-
-	if (!(hdmi_rd_reg(TX_HDCP_ST_EDID_STATUS) & (1 << 4))) {
-		/* If we don't have EDID, then request it from the HW. */
-		int ret;
-
-		ret = fetch_edid();
-		if (ret < 0)
-			return false;
-	}
-
-	for (i = 0; i < EDID_BUF_LENGTH; i++)
-		edid_buf[i] = hdmi_rd_reg(TX_RX_EDID_OFFSET + i);
-
-	/* TODO: Check extension block validity. */
-	if (!drm_edid_block_valid(edid_buf, 0, true))
-		return false;
-
-	return true;
-}
-
 static int meson_connector_get_modes(struct drm_connector *connector)
 {
-	char edid_buf[EDID_BUF_LENGTH];
-	struct edid *edid = (struct edid *) edid_buf;
+	struct hdmitx_dev *hdev = get_hdmitx_dev();
+	struct edid *edid;
 
-	if (!read_edid(edid_buf))
-		return 0;
+	hdmitx_get_edid(hdev);
+	set_disp_mode_auto();
 
-	if (drm_detect_hdmi_monitor(edid)) {
-		hdmi_set_reg_bits(TX_TMDS_MODE, 0x3, 6, 2);
-	} else {
-		hdmi_set_reg_bits(TX_VIDEO_DTV_OPTION_L, 0x0, 6, 2);
-		hdmi_set_reg_bits(TX_TMDS_MODE, 0x2, 6, 2);
-	}
+	if (!drm_edid_block_valid(hdev->EDID_buf, 0, true))
+		return false;
 
-	hdmi_audio_off_flag = !drm_detect_monitor_audio(edid);
+	edid = (struct edid *) hdev->EDID_buf;
 
 	drm_mode_connector_update_edid_property(connector, edid);
+
 	return drm_add_edid_modes(connector, edid);
 }
 
@@ -272,7 +217,7 @@ static void hdmi_hotplug_work_func(struct work_struct *work)
 
 	/* Clear interrupt status flags. We don't actually care what
 	 * the INTR was about. */
-	hdmi_wr_reg(OTHER_BASE_ADDR + HDMI_OTHER_INTR_STAT_CLR, 0xF);
+//	hdmi_wr_reg(OTHER_BASE_ADDR + HDMI_OTHER_INTR_STAT_CLR, 0xF);
 
 	/* This interrupt means one of three things: HPD rose, HPD fell,
 	 * or EDID has changed. For all three, emit a hotplug event. */
@@ -306,7 +251,7 @@ struct drm_connector *meson_hdmi_connector_create(struct drm_device *dev,
 	 * effect, or just changes the behaviour of the hdmitx code, but I
 	 * suspect the latter.
 	 */
-	hdmi_wr_reg(TX_PKT_REG_AVI_INFO_BASE_ADDR + 0x04, 0);
+//	hdmi_wr_reg(TX_PKT_REG_AVI_INFO_BASE_ADDR + 0x04, 0);
 
 	encoder = meson_encoder_create(dev);
 	if (!encoder)
