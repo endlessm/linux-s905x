@@ -28,6 +28,23 @@
 #include "meson_priv.h"
 #include "meson_gem.h"
 
+int meson_ioctl_msync(struct drm_device *dev, void *data, struct drm_file *file)
+{
+	return 0;
+}
+
+int meson_ioctl_set_domain(struct drm_device *dev, void *data, struct drm_file *file)
+{
+	return 0;
+}
+
+int meson_ioctl_cache_operations_control(struct drm_device *dev, void *data, struct drm_file *file)
+{
+	return 0;
+}
+
+#if 0
+
 #define DBG_MSG(level,args) do {} while(0) /* FIXME: debug properly */
 
 static void cache_control_op(enum drm_meson_msync_op op, u32 start_p, u32 end_p)
@@ -272,3 +289,5 @@ int meson_ioctl_cache_operations_control(struct drm_device *dev, void *data, str
 
 	return 0;
 }
+
+#endif
