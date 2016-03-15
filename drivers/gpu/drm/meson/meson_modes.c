@@ -67,25 +67,8 @@ static const struct {
 	enum meson_modes_flags lookup_flags;
 } supported_modes[] = {
 	/* HDMI modes */
-	{ 640,  480,  60, VMODE_640X480P_60HZ,   MESON_MODES_HDMI },
-	{ 640,  480,  75, VMODE_640X480P_75HZ,   MESON_MODES_HDMI },
 	{ 720,  480,  60, VMODE_480P,            MESON_MODES_HDMI },
-	{ 720,  576,  50, VMODE_576P,            MESON_MODES_HDMI },
-	{ 800,  600,  60, VMODE_800X600P_60HZ,   MESON_MODES_HDMI },
-	{ 800,  600,  75, VMODE_800X600P_75HZ,   MESON_MODES_HDMI },
-	{ 1024, 768,  60, VMODE_1024X768P_60HZ,  MESON_MODES_HDMI },
-	{ 1024, 768,  75, VMODE_1024X768P_75HZ,  MESON_MODES_HDMI },
-	{ 1280, 720,  50, VMODE_720P_50HZ,       MESON_MODES_HDMI },
 	{ 1280, 720,  60, VMODE_720P,            MESON_MODES_HDMI },
-	{ 1280, 800,  60, VMODE_1280X800P_60HZ,  MESON_MODES_HDMI },
-	{ 1280, 1024, 60, VMODE_1280X1024P_60HZ, MESON_MODES_HDMI },
-	{ 1280, 1024, 75, VMODE_1280X1024P_75HZ, MESON_MODES_HDMI },
-	{ 1360, 768,  60, VMODE_1360X768P_60HZ,	 MESON_MODES_HDMI },
-	{ 1366, 768,  60, VMODE_1366X768P_60HZ,	 MESON_MODES_HDMI },
-	{ 1440, 900,  60, VMODE_1440X900P_60HZ,  MESON_MODES_HDMI },
-	{ 1600, 900,  60, VMODE_1600X900P_60HZ,	 MESON_MODES_HDMI },
-	{ 1920, 1080, 24, VMODE_1080P_24HZ,      MESON_MODES_HDMI },
-	{ 1920, 1080, 50, VMODE_1080P_50HZ,      MESON_MODES_HDMI },
 	{ 1920, 1080, 60, VMODE_1080P,           MESON_MODES_HDMI },
 
 	/* CVBS modes */
@@ -93,8 +76,6 @@ static const struct {
 	/* XXX: For some reason, calling drm_mode_vrefresh on these modes gives us
 	 * incorrect refresh rates. The original algorithm comes from an Excel
 	 * spreadsheet from 2003, which I really don't want to debug. */
-	{ 720, 480, 120, VMODE_480CVBS, MESON_MODES_CVBS },
-	{ 720, 576, 100, VMODE_576CVBS, MESON_MODES_CVBS },
 };
 
 vmode_t drm_mode_to_vmode(const struct drm_display_mode *mode,
