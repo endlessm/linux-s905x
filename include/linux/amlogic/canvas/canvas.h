@@ -60,6 +60,9 @@ extern void canvas_config(u32 index, ulong addr, u32 width, u32 height,
 void canvas_config_ex(u32 index, ulong addr, u32 width, u32 height, u32 wrap,
 					  u32 blkmode, u32 endian);
 
+void canvas_setup(u32 index, ulong addr, u32 width, u32 height, u32 wrap,
+		  u32 blkmode);
+
 extern void canvas_read(u32 index, struct canvas_s *p);
 
 extern void canvas_copy(unsigned src, unsigned dst);

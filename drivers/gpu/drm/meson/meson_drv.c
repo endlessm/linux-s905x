@@ -82,27 +82,6 @@ enum meson_canvas_blkmode {
 	MESON_CANVAS_BLKMODE_64x64  = 0x02,
 };
 
-/* Set up a canvas. */
-static void canvas_setup(uint32_t canvas_index,
-			 uint32_t addr,
-			 uint32_t stride, uint32_t height,
-			 enum meson_canvas_wrap wrap,
-			 enum meson_canvas_blkmode blkmode)
-{
-	CANVAS_WRITE(DC_CAV_LUT_DATAL,
-		     (((addr + 7) >> 3)) |
-		     (((stride + 7) >> 3) << CANVAS_WIDTH_LBIT));
-	CANVAS_WRITE(DC_CAV_LUT_DATAH,
-		     ((((stride + 7) >> 3) >> CANVAS_WIDTH_LWID) << CANVAS_WIDTH_HBIT) |
-		     (height << CANVAS_HEIGHT_BIT) |
-		     (wrap << 22) |
-		     (blkmode << CANVAS_BLKMODE_BIT));
-	CANVAS_WRITE(DC_CAV_LUT_ADDR, CANVAS_LUT_WR_EN | canvas_index);
-
-	/* Force a read-back to make sure everything is flushed. */
-	CANVAS_READ(DC_CAV_LUT_DATAH);
-}
-
 /* CRTC definition */
 
 enum meson_underscan_type {

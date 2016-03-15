@@ -184,6 +184,37 @@ static void canvas_config_locked(u32 index, struct canvas_s *p)
 	return;
 }
 
+void canvas_setup(u32 index, ulong addr, u32 width, u32 height, u32 wrap,
+		  u32 blkmode)
+{
+	struct canvas_device_info *info = &canvas_info;
+	u32 datal, datah;
+	u32 reg_add = 0;
+
+	canvas_lut_data_build(addr,
+			width,
+			height,
+			wrap,
+			blkmode,
+			0, &datal, &datah);
+
+	if ((get_cpu_type() == MESON_CPU_MAJOR_ID_M8M2) ||
+		(get_cpu_type() >= MESON_CPU_MAJOR_ID_GXBB))
+		reg_add = DC_CAV_LUT_DATAL_M8M2 - DC_CAV_LUT_DATAL;
+
+	canvas_io_write(info->reg_base + reg_add + DC_CAV_LUT_DATAL, datal);
+
+	canvas_io_write(info->reg_base + reg_add + DC_CAV_LUT_DATAH, datah);
+
+	canvas_io_write(info->reg_base + reg_add + DC_CAV_LUT_ADDR,
+					CANVAS_LUT_WR_EN | index);
+
+	canvas_io_read(info->reg_base + reg_add + DC_CAV_LUT_DATAH);
+
+	return;
+}
+EXPORT_SYMBOL(canvas_setup);
+
 int canvas_read_hw(u32 index, struct canvas_s *canvas)
 {
 	struct canvas_device_info *info = &canvas_info;
