@@ -31,9 +31,8 @@
 #include "meson_modes.h"
 #include "meson_cvbs.h"
 
-#include <mach/am_regs.h>
-#include <mach/irqs.h>
 #include <linux/amlogic/aml_gpio_consumer.h>
+#include "../../../../drivers/amlogic/hdmi/hdmi_tx_20/hw/mach_reg.h"
 
 /* Encoder */
 
