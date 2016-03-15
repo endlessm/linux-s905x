@@ -89,6 +89,8 @@ enum vmode_e {
 	VMODE_MASK = 0xFF,
 };
 
+typedef enum vmode_e vmode_t;
+
 enum tvmode_e {
 	TVMODE_480I = 0,
 	TVMODE_480I_RPT,
