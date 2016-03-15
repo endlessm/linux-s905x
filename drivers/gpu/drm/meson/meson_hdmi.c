@@ -30,12 +30,10 @@
 #include "meson_modes.h"
 #include "meson_priv.h"
 
-#include <mach/am_regs.h>
-#include <mach/irqs.h>
-#include <mach/hdmi_tx_reg.h>
-
 #include <linux/amlogic/hdmi_tx/hdmi_info_global.h>
 #include <linux/amlogic/hdmi_tx/hdmi_tx_module.h>
+#include "../../../../drivers/amlogic/hdmi/hdmi_tx_20/hw/mach_reg.h"
+#include "../../../../drivers/amlogic/hdmi/hdmi_tx_14/ts/hdmi_tx_reg.h"
 
 static void meson_set_hdmi_audio(void)
 {
