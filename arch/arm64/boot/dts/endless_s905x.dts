@@ -38,6 +38,8 @@
 	};
 
 	mesondrm {
+		interrupts = <0 57 1>;
+		interrupt-names = "hdmitx_hpd";
 		compatible = "amlogic,mesongxl-display";
 		dev_name = "mesondrm";
 	};
