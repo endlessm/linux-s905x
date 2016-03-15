@@ -385,6 +385,10 @@ typedef struct hdmitx_dev hdmitx_dev_t;
 /***********************************************************************
  *    hdmitx protocol level interface
  **********************************************************************/
+struct hdmitx_dev *get_hdmitx_dev(void);
+void hdmitx_get_edid(struct hdmitx_dev *hdev);
+int set_disp_mode_auto(void);
+
 extern void hdmitx_init_parameters(struct hdmitx_info *info);
 extern enum hdmi_vic hdmitx_edid_vic_tab_map_vic(const char *disp_mode);
 

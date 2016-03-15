@@ -73,14 +73,12 @@
 
 static dev_t hdmitx_id;
 static struct class *hdmitx_class;
-static int set_disp_mode_auto(void);
 struct vinfo_s *hdmi_get_current_vinfo(void);
 static int edid_rx_data(unsigned char regaddr, unsigned char *rx_data,
 	int length);
 static int edid_rx_ext_data(unsigned char *ext, unsigned char regaddr,
 	unsigned char *rx_data,	int length);
 static void gpio_read_edid(unsigned char *rx_edid);
-static void hdmitx_get_edid(struct hdmitx_dev *hdev);
 static void hdmitx_set_drm_pkt(struct master_display_info_s *data);
 static int hdcp_tst_sig;
 
@@ -149,6 +147,11 @@ static void hdmitx_early_suspend(struct early_suspend *h)
 	switch_set_state(&hdmi_power, 0);
 	phdmi->HWOp.CntlConfig(&hdmitx_device, CONF_CLR_AVI_PACKET, 0);
 	phdmi->HWOp.CntlConfig(&hdmitx_device, CONF_CLR_VSDB_PACKET, 0);
+}
+
+struct hdmitx_dev *get_hdmitx_dev(void)
+{
+	return &hdmitx_device;
 }
 
 static int hdmitx_is_hdmi_vmode(char *mode_name)
@@ -454,7 +457,7 @@ EXPORT_SYMBOL(hdmitx_is_vmode_supported);
 
 #endif
 
-static int set_disp_mode_auto(void)
+int set_disp_mode_auto(void)
 {
 	int ret =  -1;
 	struct vinfo_s *info = NULL;
@@ -2029,7 +2032,7 @@ static int hdmitx_notify_callback_a(struct notifier_block *block,
 struct i2c_client *i2c_edid_client;
 
 static DEFINE_MUTEX(getedid_mutex);
-static void hdmitx_get_edid(struct hdmitx_dev *hdev)
+void hdmitx_get_edid(struct hdmitx_dev *hdev)
 {
 	mutex_lock(&getedid_mutex);
 	if (hdev->gpio_i2c_enable) {
