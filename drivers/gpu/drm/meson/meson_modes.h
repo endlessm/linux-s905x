@@ -26,6 +26,7 @@
 
 #include <drm/drmP.h>
 #include <linux/amlogic/vout/vout_notify.h>
+#include <linux/amlogic/vout/vinfo.h>
 
 enum meson_modes_flags {
 	MESON_MODES_HDMI = (1 << 0),
