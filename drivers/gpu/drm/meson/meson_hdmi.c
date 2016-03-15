@@ -104,7 +104,7 @@ static void meson_encoder_mode_set(struct drm_encoder *encoder,
 		meson_set_hdmi_audio();
 
 	/* Make sure to unblank our display */
-	aml_write_reg32(P_VPU_HDMI_DATA_OVR, 0);
+	hd_write_reg(P_VPU_HDMI_DATA_OVR, 0);
 }
 
 static const struct drm_encoder_helper_funcs meson_encoder_helper_funcs = {
@@ -156,7 +156,7 @@ static void meson_connector_destroy(struct drm_connector *connector)
 
 static bool read_hpd_gpio(void)
 {
-	return !!(aml_read_reg32(P_PREG_PAD_GPIO3_I) & (1 << 19));
+	return !!(hd_read_reg(P_PREG_PAD_GPIO3_I) & (1 << 19));
 }
 
 static enum drm_connector_status meson_connector_detect(struct drm_connector *connector, bool force)
@@ -173,7 +173,7 @@ static int fetch_edid(void)
 	int i;
 
 	/* Turn on the EDID power. */
-	aml_set_reg32_bits(P_HHI_MEM_PD_REG0, 0, 8, 2);
+	hd_set_reg_bits(P_HHI_MEM_PD_REG0, 0, 8, 2);
 
 	/* Ask for EDID by setting sys_config_trigger high. */
 	hdmi_set_reg_bits(TX_HDCP_EDID_CONFIG, 1, 6, 1);
