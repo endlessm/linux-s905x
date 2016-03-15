@@ -263,6 +263,8 @@ struct hdmitx_dev {
 	unsigned int hdr_src_feature;
 };
 
+typedef struct hdmitx_dev hdmitx_dev_t;
+
 #define CMD_DDC_OFFSET          (0x10 << 24)
 #define CMD_STATUS_OFFSET       (0x11 << 24)
 #define CMD_PACKET_OFFSET       (0x12 << 24)
