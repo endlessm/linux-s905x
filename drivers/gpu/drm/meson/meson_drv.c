@@ -890,6 +890,7 @@ static int meson_load(struct drm_device *dev, unsigned long flags)
 		enabled_connectors = MESON_CONNECTORS_HDMI;
 
 	meson_hdmi_connector_create(dev, !!(enabled_connectors & MESON_CONNECTORS_HDMI));
+#if 0
 	meson_cvbs_init(dev);
 
 	{
@@ -909,6 +910,7 @@ static int meson_load(struct drm_device *dev, unsigned long flags)
 
 		meson_cvbs_connector_create(dev, !!(enabled_connectors & MESON_CONNECTORS_CVBS_PAL), mode);
 	}
+#endif
 
 	ret = drm_vblank_init(dev, dev->mode_config.num_crtc);
 	if (ret < 0) {
