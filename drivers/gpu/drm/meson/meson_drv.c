@@ -43,10 +43,13 @@
 #include "meson_gem.h"
 #include "meson_fb.h"
 
-#include <mach/am_regs.h>
-#include <mach/irqs.h>
+#include "../../../../drivers/amlogic/display/osd/osd_io.h"
+#include "../../../../drivers/amlogic/display/osd/osd_reg.h"
+#include "../../../../drivers/amlogic/display/osd/osd.h"
+#include "../../../../drivers/amlogic/display/vout/vpp.h"
 #include <linux/amlogic/vout/vout_notify.h>
 #include <linux/amlogic/aml_gpio_consumer.h>
+#include <linux/amlogic/canvas/canvas.h>
 #include <linux/amlogic/hdmi_tx/hdmi_info_global.h>
 #include <linux/amlogic/hdmi_tx/hdmi_tx_module.h>
 
