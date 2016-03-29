@@ -33,7 +33,7 @@
 #include <linux/amlogic/hdmi_tx/hdmi_info_global.h>
 #include <linux/amlogic/hdmi_tx/hdmi_tx_module.h>
 #include "../../../../drivers/amlogic/hdmi/hdmi_tx_20/hw/mach_reg.h"
-#include "../../../../drivers/amlogic/hdmi/hdmi_tx_14/ts/hdmi_tx_reg.h"
+#include "../../../../drivers/amlogic/hdmi/hdmi_tx_20/hw/hdmi_tx_reg.h"
 
 static void meson_set_hdmi_audio(void)
 {
@@ -152,11 +152,6 @@ static void meson_connector_destroy(struct drm_connector *connector)
 	struct meson_connector *meson_connector = to_meson_connector(connector);
 	drm_connector_cleanup(connector);
 	kfree(meson_connector);
-}
-
-static bool read_hpd_gpio(void)
-{
-	return !!(hd_read_reg(P_PREG_PAD_GPIO3_I) & (1 << 19));
 }
 
 static enum drm_connector_status meson_connector_detect(struct drm_connector *connector, bool force)
