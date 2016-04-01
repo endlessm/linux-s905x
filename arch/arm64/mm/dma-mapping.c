@@ -338,9 +338,23 @@ static int __swiotlb_mmap_coherent(struct device *dev,
 	return __dma_common_mmap(dev, vma, cpu_addr, dma_addr, size);
 }
 
+static int __swiotlb_get_sgtable(struct device *dev, struct sg_table *sgt,
+				 void *cpu_addr, dma_addr_t handle, size_t size,
+				 struct dma_attrs *attrs)
+{
+	int ret = sg_alloc_table(sgt, 1, GFP_KERNEL);
+
+	if (!ret)
+		sg_set_page(sgt->sgl, phys_to_page(dma_to_phys(dev, handle)),
+			    PAGE_ALIGN(size), 0);
+
+	return ret;
+}
+
 struct dma_map_ops noncoherent_swiotlb_dma_ops = {
 	.alloc = __dma_alloc_noncoherent,
 	.free = __dma_free_noncoherent,
+	.get_sgtable = __swiotlb_get_sgtable,
 	.mmap = __swiotlb_mmap_noncoherent,
 	.map_page = __swiotlb_map_page,
 	.unmap_page = __swiotlb_unmap_page,
@@ -358,6 +372,7 @@ EXPORT_SYMBOL(noncoherent_swiotlb_dma_ops);
 struct dma_map_ops coherent_swiotlb_dma_ops = {
 	.alloc = __dma_alloc_coherent,
 	.free = __dma_free_coherent,
+	.get_sgtable = __swiotlb_get_sgtable,
 	.mmap = __swiotlb_mmap_coherent,
 	.map_page = swiotlb_map_page,
 	.unmap_page = swiotlb_unmap_page,
