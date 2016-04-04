@@ -530,6 +530,7 @@ static struct file_operations umplock_fops = {
 	.open    = umplock_driver_open,
 	.release = umplock_driver_release,
 	.unlocked_ioctl = umplock_driver_ioctl,
+	.compat_ioctl = umplock_driver_ioctl,
 };
 
 int umplock_device_initialize(void)
