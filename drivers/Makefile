@@ -174,3 +174,5 @@ obj-$(CONFIG_ANDROID)		+= android/
 obj-$(CONFIG_NVMEM)		+= nvmem/
 obj-$(CONFIG_FPGA)		+= fpga/
 obj-$(CONFIG_AMLOGIC_DRIVER) 	+= amlogic/
+obj-$(CONFIG_ARCH_ENDLESS)	+= endless/
+
