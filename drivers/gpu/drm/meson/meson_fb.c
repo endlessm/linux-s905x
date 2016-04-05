@@ -329,7 +329,7 @@ static void meson_drm_fb_describe(struct drm_framebuffer *fb, struct seq_file *m
 
 		seq_printf(m, "   %d: offset=%d pitch=%d, obj: ",
 				i, fb->offsets[i], fb->pitches[i]);
-		seq_printf(m, "%2d (%2d) %pad %p %d\n",
+		seq_printf(m, "%2d (%2d) %pad %p %zu\n",
 				obj->name, obj->refcount.refcount.counter,
 				&meson_obj->paddr, meson_obj->vaddr, obj->size);
 	}
