@@ -47,6 +47,10 @@
 #include "queue.h"
 #include <linux/mmc/emmc_partitions.h>
 
+#if defined(CONFIG_ARCH_MESON64_ENDLESS_S905X)
+#include <linux/endless/s905x.h>
+#endif
+
 MODULE_ALIAS("mmc:block");
 #ifdef MODULE_PARAM_PREFIX
 #undef MODULE_PARAM_PREFIX
@@ -2098,12 +2102,23 @@ static struct mmc_blk_data *mmc_blk_alloc_req(struct mmc_card *card,
 	 * partitions, devidx will not coincide with a per-physical card
 	 * index anymore so we keep track of a name index.
 	 */
+
+#if defined(CONFIG_ARCH_MESON64_ENDLESS_S905X)
+	if (strncmp(dev_name(&card->host->class_dev), "sd", 2) == 0) {
+		md->name_idx = board_boot_from_emmc() ? 1 : 0;
+		__set_bit(md->name_idx, name_use);
+	} else if (strncmp(dev_name(&card->host->class_dev), "emmc", 4) == 0) {
+		md->name_idx = board_boot_from_emmc() ? 0 : 1;
+		__set_bit(md->name_idx, name_use);
+	}
+#else
 	if (!subname) {
 		md->name_idx = find_first_zero_bit(name_use, max_devices);
 		__set_bit(md->name_idx, name_use);
 	} else
 		md->name_idx = ((struct mmc_blk_data *)
 				dev_to_disk(parent)->private_data)->name_idx;
+#endif
 
 	md->area_type = area_type;
 
