@@ -62,7 +62,7 @@ static struct meson_drm_gem_object *meson_drm_gem_init(struct drm_device *dev,
 		goto error;
 	}
 
-	DRM_DEBUG_KMS("created file object = 0x%x\n", (unsigned int)gem_obj->filp);
+	DRM_DEBUG_KMS("created file object = 0x%p\n", gem_obj->filp);
 
 	return meson_gem_obj;
 
