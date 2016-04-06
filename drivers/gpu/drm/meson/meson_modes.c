@@ -67,8 +67,19 @@ static const struct {
 	enum meson_modes_flags lookup_flags;
 } supported_modes[] = {
 	/* HDMI modes */
+	{ 640,  480,  60, VMODE_VGA,             MESON_MODES_HDMI },
 	{ 720,  480,  60, VMODE_480P,            MESON_MODES_HDMI },
+	{ 720,  576,  50, VMODE_576P,            MESON_MODES_HDMI },
+	{ 800,  600,  60, VMODE_SVGA,            MESON_MODES_HDMI },
+	{ 1024, 768,  60, VMODE_XGA,             MESON_MODES_HDMI },
+	{ 1280, 720,  50, VMODE_720P_50HZ,       MESON_MODES_HDMI },
 	{ 1280, 720,  60, VMODE_720P,            MESON_MODES_HDMI },
+	{ 1280, 1024, 60, VMODE_SXGA,            MESON_MODES_HDMI },
+	{ 1440, 900,  60, VMODE_WSXGA,           MESON_MODES_HDMI },
+	{ 1920, 1080, 24, VMODE_1080P_24HZ,      MESON_MODES_HDMI },
+	{ 1920, 1080, 25, VMODE_1080P_25HZ,      MESON_MODES_HDMI },
+	{ 1920, 1080, 30, VMODE_1080P_30HZ,      MESON_MODES_HDMI },
+	{ 1920, 1080, 50, VMODE_1080P_50HZ,      MESON_MODES_HDMI },
 	{ 1920, 1080, 60, VMODE_1080P,           MESON_MODES_HDMI },
 
 	/* CVBS modes */
