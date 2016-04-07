@@ -3076,13 +3076,6 @@ static int amstream_probe(struct platform_device *pdev)
 
 	pr_err("Amlogic A/V streaming port init\n");
 
-	if (has_hevc_vdec()) {
-		amstream_port_num = MAX_AMSTREAM_PORT_NUM;
-		amstream_buf_num = BUF_MAX_NUM;
-	} else {
-		amstream_port_num = MAX_AMSTREAM_PORT_NUM - 1;
-		amstream_buf_num = BUF_MAX_NUM - 1;
-	}
 /*
 	r = of_reserved_mem_device_init(&pdev->dev);
 	if (r == 0)
@@ -3109,8 +3102,6 @@ static int amstream_probe(struct platform_device *pdev)
 		goto error2;
 	}
 
-	vdec_set_decinfo(&amstream_dec_info);
-
 	amstream_dev_class = class_create(THIS_MODULE, DEVICE_NAME);
 
 	for (st = &ports[0], i = 0; i < amstream_port_num; i++, st++) {
@@ -3132,8 +3123,6 @@ static int amstream_probe(struct platform_device *pdev)
 	amstream_pdev = pdev;
 	amports_clock_gate_init(&amstream_pdev->dev);
 
-	/*prealloc fetch buf to avoid no continue buffer later...*/
-	stbuf_fetch_init();
 	return 0;
 
 	/*
@@ -3159,7 +3148,6 @@ static int amstream_remove(struct platform_device *pdev)
 		stbuf_change_size(&bufs[BUF_TYPE_VIDEO], 0);
 	if (bufs[BUF_TYPE_AUDIO].flag & BUF_FLAG_ALLOC)
 		stbuf_change_size(&bufs[BUF_TYPE_AUDIO], 0);
-	stbuf_fetch_release();
 	tsdemux_class_unregister();
 	for (st = &ports[0], i = 0; i < amstream_port_num; i++, st++)
 		device_destroy(amstream_dev_class, MKDEV(AMSTREAM_MAJOR, i));
@@ -3238,6 +3226,21 @@ static struct platform_driver amstream_driver = {
 
 static int __init amstream_module_init(void)
 {
+	int ret;
+
+	vdec_set_decinfo(&amstream_dec_info);
+	if (has_hevc_vdec()) {
+		amstream_port_num = MAX_AMSTREAM_PORT_NUM;
+		amstream_buf_num = BUF_MAX_NUM;
+	} else {
+		amstream_port_num = MAX_AMSTREAM_PORT_NUM - 1;
+		amstream_buf_num = BUF_MAX_NUM - 1;
+	}
+
+	ret = stbuf_fetch_init();
+	if (ret)
+		return ret;
+
 	if (platform_driver_register(&amstream_driver)) {
 		pr_err("failed to register amstream module\n");
 		return -ENODEV;
@@ -3248,6 +3251,7 @@ static int __init amstream_module_init(void)
 static void __exit amstream_module_exit(void)
 {
 	platform_driver_unregister(&amstream_driver);
+	stbuf_fetch_release();
 	return;
 }
 #if 0
