@@ -768,7 +768,7 @@ static int meson_vdec_open(struct file *file)
 	ctx->dev = dev;
 	ctx->hdr_parse_state = HEADER_NOT_PARSED;
 
-	ctx->buf_vaddr = dma_alloc_coherent(NULL, VDEC_ST_FIFO_SIZE,
+	ctx->buf_vaddr = dma_alloc_coherent(dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE,
 					    (dma_addr_t *) &sbuf->buf_start, GFP_KERNEL);
 	if (!ctx->buf_vaddr) {
 		ret = -ENOMEM;
@@ -817,7 +817,7 @@ err_stop_thread:
 	kthread_stop(ctx->image_thread);
 
 err_free_buf:
-	dma_free_coherent(NULL, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
+	dma_free_coherent(dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
 			  sbuf->buf_start);
 err_free_ctx:
 	kfree(ctx);
@@ -839,7 +839,7 @@ static int meson_vdec_release(struct file *file)
 	mutex_lock(&dev->dev_mutex);
 	v4l2_m2m_ctx_release(ctx->m2m_ctx);
 	kthread_stop(ctx->image_thread);
-	dma_free_coherent(NULL, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
 		          sbuf->buf_start);
 
 	mutex_unlock(&dev->dev_mutex);
@@ -905,7 +905,7 @@ static int meson_vdec_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	dev->decoder_buf = dma_alloc_coherent(NULL, VDEC_HW_BUF_SIZE,
+	dev->decoder_buf = dma_alloc_coherent(&pdev->dev, VDEC_HW_BUF_SIZE,
 					      &dev->decoder_buf_phys,
 					      GFP_KERNEL);
 	if (!dev->decoder_buf) {
@@ -933,6 +933,7 @@ static int meson_vdec_probe(struct platform_device *pdev)
 
 	*vfd = vdec_videodev;
 	vfd->lock = &dev->dev_mutex;
+	vfd->v4l2_dev = &dev->v4l2_dev;
 
 	ret = video_register_device(vfd, VFL_TYPE_GRABBER, 0);
 	if (ret) {
@@ -966,7 +967,7 @@ rel_vdev:
 unreg_dev:
 	v4l2_device_unregister(&dev->v4l2_dev);
 free_buffer:
-	dma_free_coherent(NULL, VDEC_HW_BUF_SIZE, dev->decoder_buf,
+	dma_free_coherent(&pdev->dev, VDEC_HW_BUF_SIZE, dev->decoder_buf,
 			  dev->decoder_buf_phys);
 image_exit:
 	vdec_image_exit(dev);
@@ -984,7 +985,7 @@ static int meson_vdec_remove(struct platform_device *pdev)
 	v4l2_m2m_release(dev->m2m_dev);
 	video_unregister_device(dev->vfd);
 	v4l2_device_unregister(&dev->v4l2_dev);
-	dma_free_coherent(NULL, VDEC_HW_BUF_SIZE, dev->decoder_buf,
+	dma_free_coherent(dev->v4l2_dev.dev, VDEC_HW_BUF_SIZE, dev->decoder_buf,
 			  dev->decoder_buf_phys);
 	return 0;
 }
