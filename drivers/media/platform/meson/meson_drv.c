@@ -996,7 +996,7 @@ static const struct of_device_id meson_vdec_of_ids[] = {
 	},
 	{},
 };
-MODULE_DEVICE_TABLE(of, exynos_mfc_match);
+MODULE_DEVICE_TABLE(of, meson_vdec_of_ids);
 
 static struct platform_driver meson_vdec_driver = {
 	.probe		= meson_vdec_probe,
