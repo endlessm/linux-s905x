@@ -295,6 +295,15 @@ static s32 vh264_init(void);
 
 #define DFS_HIGH_THEASHOLD 3
 
+static void *params_cb_data;
+static void (*params_cb)(void *data, int status, u32 width, u32 height) = NULL;
+
+void vh264_set_params_cb(void *data, void *cb)
+{
+	params_cb_data = data;
+	params_cb = cb;
+}
+
 static bool pts_discontinue;
 
 #ifdef CONFIG_GE2D_KEEP_FRAME
@@ -719,6 +728,9 @@ static void vh264_set_params(struct work_struct *work)
 	mb_total = mb_width * mb_height;
 
 	 /*max_reference_size <= max_dpb_size <= actual_dpb_size*/
+	if (params_cb)
+		params_cb(params_cb_data, 0, frame_width, frame_height);
+
 	 is_4k = (mb_total > 8160) ? true:false;
 	if (is_4k) {
 		/*4k2k*/
