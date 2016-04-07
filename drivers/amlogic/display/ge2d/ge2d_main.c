@@ -463,6 +463,7 @@ static int init_ge2d_device(void)
 	return ret;
 }
 
+#ifdef MODULE
 static int remove_ge2d_device(void)
 {
 	if (!ge2d_device.cla)
@@ -491,3 +492,6 @@ static void __exit ge2d_remove_module(void)
 
 module_init(ge2d_init_module);
 module_exit(ge2d_remove_module);
+#else
+subsys_initcall(init_ge2d_device);
+#endif
