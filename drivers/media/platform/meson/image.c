@@ -8,12 +8,11 @@
  * the Free Software Foundation; version 2 of the License.
  */
 
-#include <linux/amlogic/amports/canvas.h>
+#include <linux/amlogic/canvas/canvas.h>
 #include <linux/amlogic/ge2d/ge2d.h>
 #include <linux/amlogic/amports/vframe.h>
 #include <media/videobuf2-core.h>
 #include <media/videobuf2-dma-contig.h>
-#include <mach/mod_gate.h>
 
 #include "meson_vdec.h"
 
@@ -147,12 +146,12 @@ int vdec_image_init(struct vdec_dev *dev)
 	if (!dev->ge2d_context)
 		return -EINVAL;
 
-	switch_mod_gate_by_name("ge2d", 1);
+//	switch_mod_gate_by_name("ge2d", 1);
 	return 0;
 }
 
 void vdec_image_exit(struct vdec_dev *dev)
 {
-	switch_mod_gate_by_name("ge2d", 0);
+//	switch_mod_gate_by_name("ge2d", 0);
 	destroy_ge2d_work_queue(dev->ge2d_context);
 }

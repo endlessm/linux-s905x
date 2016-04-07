@@ -569,6 +569,7 @@ struct ge2d_context_s {
 	int				queue_need_recycle;
 	spinlock_t		lock;	/* for get and release item. */
 };
+typedef struct ge2d_context_s ge2d_context_t;
 
 struct ge2d_event_s {
 	wait_queue_head_t cmd_complete;
@@ -684,6 +685,7 @@ struct config_para_ex_s {
 	struct config_planes_s src2_planes[4];
 	struct config_planes_s dst_planes[4];
 };
+typedef struct config_para_ex_s config_para_ex_t;
 
 extern void ge2d_set_src1_data(struct ge2d_src1_data_s *cfg);
 extern void ge2d_set_src1_gen(struct ge2d_src1_gen_s *cfg);

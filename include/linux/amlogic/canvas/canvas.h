@@ -34,6 +34,7 @@ struct canvas_s {
 	u32 dataL;
 	u32 dataH;
 };
+typedef struct canvas_s canvas_t;
 
 #define CANVAS_ADDR_NOWRAP      0x00
 #define CANVAS_ADDR_WRAPX       0x01
