@@ -58,6 +58,7 @@ struct stream_buf_s {
 	void *write_thread;
 	int for_4k;
 } /*stream_buf_t */;
+typedef struct stream_buf_s stream_buf_t;
 
 struct stream_port_s {
 	/* driver info */
@@ -83,6 +84,8 @@ struct stream_port_s {
 	u32 sid;
 	u32 pcrid;
 } /*stream_port_t */;
+typedef struct stream_port_s stream_port_t;
+
 enum drm_level_e {
 	DRM_LEVEL1 = 1,
 	DRM_LEVEL2 = 2,
