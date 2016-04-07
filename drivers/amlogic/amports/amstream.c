@@ -820,7 +820,7 @@ error1:
 	return r;
 }
 
-static int amstream_port_release(struct stream_port_s *port)
+int amstream_port_release(struct stream_port_s *port)
 {
 	struct stream_buf_s *pvbuf = &bufs[BUF_TYPE_VIDEO];
 	struct stream_buf_s *pabuf = &bufs[BUF_TYPE_AUDIO];
@@ -851,6 +851,48 @@ static int amstream_port_release(struct stream_port_s *port)
 
 	port->pcr_inited = 0;
 	port->flag = 0;
+
+	if (port->type & PORT_TYPE_VIDEO) {
+		amstream_vdec_status = NULL;
+		amstream_vdec_trickmode = NULL;
+	}
+
+	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_M6) {
+		if (port->type & PORT_TYPE_VIDEO) {
+			if (get_cpu_type() >= MESON_CPU_MAJOR_ID_M8) {
+				if (has_hevc_vdec())
+					vdec_poweroff(VDEC_HEVC);
+
+				vdec_poweroff(VDEC_1);
+			}
+			/* TODO: mod gate */
+			/* switch_mod_gate_by_name("vdec", 0); */
+			amports_switch_gate("vdec", 0);
+		}
+
+		if (port->type & PORT_TYPE_AUDIO) {
+			/* TODO: mod gate */
+			/* switch_mod_gate_by_name("audio", 0); */
+			/* amports_switch_gate("audio", 0); */
+		}
+
+		if (get_cpu_type() >= MESON_CPU_MAJOR_ID_M8
+			&& !is_meson_mtvd_cpu()) {
+			/* TODO: clc gate */
+			/* /CLK_GATE_OFF(VPU_INTR); */
+			amports_switch_gate("vpu_intr", 0);
+		}
+
+		if (get_cpu_type() >= MESON_CPU_MAJOR_ID_M8) {
+			/* TODO: clc gate */
+			/* CLK_GATE_OFF(HIU_PARSER_TOP); */
+			amports_switch_gate("parser_top", 0);
+		}
+		/* TODO: mod gate */
+		/* switch_mod_gate_by_name("demux", 0); */
+		amports_switch_gate("demux", 0);
+	}
+
 	return 0;
 }
 
@@ -1211,28 +1253,8 @@ static ssize_t amstream_userdata_read(struct file *file, char __user *buf,
 }
 
 
-static int amstream_open(struct inode *inode, struct file *file)
+void amstream_port_open(stream_port_t *this)
 {
-	s32 i;
-	struct stream_port_s *s;
-	struct stream_port_s *this = &ports[iminor(inode)];
-	if (iminor(inode) >= amstream_port_num)
-		return -ENODEV;
-	mutex_lock(&amstream_mutex);
-	if (this->flag & PORT_FLAG_IN_USE) {
-		mutex_unlock(&amstream_mutex);
-		return -EBUSY;
-	}
-
-	/* check other ports conflict */
-	for (s = &ports[0], i = 0; i < amstream_port_num; i++, s++) {
-		if ((s->flag & PORT_FLAG_IN_USE) &&
-			((this->type) & (s->type) &
-				(PORT_TYPE_VIDEO | PORT_TYPE_AUDIO))) {
-			mutex_unlock(&amstream_mutex);
-			return -EBUSY;
-		}
-	}
 
 	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_M6) {
 		/* TODO: mod gate */
@@ -1282,11 +1304,39 @@ static int amstream_open(struct inode *inode, struct file *file)
 	this->aid = 0;
 	this->sid = 0;
 	this->pcrid = 0xffff;
-	file->f_op = this->fops;
-	file->private_data = this;
 
 	this->flag = PORT_FLAG_IN_USE;
 	this->pcr_inited = 0;
+}
+
+static int amstream_open(struct inode *inode, struct file *file)
+{
+
+	s32 i;
+	struct stream_port_s *s;
+	struct stream_port_s *this = &ports[iminor(inode)];
+	if (iminor(inode) >= amstream_port_num)
+		return -ENODEV;
+	mutex_lock(&amstream_mutex);
+	if (this->flag & PORT_FLAG_IN_USE) {
+		mutex_unlock(&amstream_mutex);
+		return -EBUSY;
+	}
+
+	/* check other ports conflict */
+	for (s = &ports[0], i = 0; i < amstream_port_num; i++, s++) {
+		if ((s->flag & PORT_FLAG_IN_USE) &&
+			((this->type) & (s->type) &
+				(PORT_TYPE_VIDEO | PORT_TYPE_AUDIO))) {
+			mutex_unlock(&amstream_mutex);
+			return -EBUSY;
+		}
+	}
+	amstream_port_open(this);
+
+	file->f_op = this->fops;
+	file->private_data = this;
+
 #ifdef DATA_DEBUG
 	debug_filp = filp_open(DEBUG_FILE_NAME, O_WRONLY, 0);
 	if (IS_ERR(debug_filp)) {
@@ -1329,46 +1379,6 @@ static int amstream_release(struct inode *inode, struct file *file)
 		debug_file_pos = 0;
 	}
 #endif
-	if (this->type & PORT_TYPE_VIDEO) {
-		amstream_vdec_status = NULL;
-		amstream_vdec_trickmode = NULL;
-	}
-
-	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_M6) {
-		if (this->type & PORT_TYPE_VIDEO) {
-			if (get_cpu_type() >= MESON_CPU_MAJOR_ID_M8) {
-				if (has_hevc_vdec())
-					vdec_poweroff(VDEC_HEVC);
-
-				vdec_poweroff(VDEC_1);
-			}
-			/* TODO: mod gate */
-			/* switch_mod_gate_by_name("vdec", 0); */
-			amports_switch_gate("vdec", 0);
-		}
-
-		if (this->type & PORT_TYPE_AUDIO) {
-			/* TODO: mod gate */
-			/* switch_mod_gate_by_name("audio", 0); */
-			/* amports_switch_gate("audio", 0); */
-		}
-
-		if (get_cpu_type() >= MESON_CPU_MAJOR_ID_M8
-			&& !is_meson_mtvd_cpu()) {
-			/* TODO: clc gate */
-			/* /CLK_GATE_OFF(VPU_INTR); */
-			amports_switch_gate("vpu_intr", 0);
-		}
-
-		if (get_cpu_type() >= MESON_CPU_MAJOR_ID_M8) {
-			/* TODO: clc gate */
-			/* CLK_GATE_OFF(HIU_PARSER_TOP); */
-			amports_switch_gate("parser_top", 0);
-		}
-		/* TODO: mod gate */
-		/* switch_mod_gate_by_name("demux", 0); */
-		amports_switch_gate("demux", 0);
-	}
 	mutex_unlock(&amstream_mutex);
 	return 0;
 }
