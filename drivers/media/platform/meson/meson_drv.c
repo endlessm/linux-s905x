@@ -15,7 +15,7 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 
-#include <linux/amlogic/amstream.h>
+#include <linux/amlogic/amports/amstream.h>
 #include <linux/amlogic/amports/vformat.h>
 #include <linux/amlogic/amports/vframe_provider.h>
 #include <media/v4l2-ctrls.h>
@@ -135,7 +135,7 @@ static void send_to_parser(struct vdec_ctx *ctx, struct vb2_buffer *buf)
 	unsigned long size = vb2_get_plane_payload(buf, 0);
 
 	v4l2_info(&ctx->dev->v4l2_dev,
-		  "send src buffer %d to parser, phys addr %x size %ld\n",
+		  "send src buffer %d to parser, phys addr %llx size %ld\n",
 		  buf->v4l2_buf.index, phys_addr, size);
 	esparser_start_search(PARSER_VIDEO, phys_addr, size);
 }
@@ -769,7 +769,7 @@ static int meson_vdec_open(struct file *file)
 	ctx->hdr_parse_state = HEADER_NOT_PARSED;
 
 	ctx->buf_vaddr = dma_alloc_coherent(NULL, VDEC_ST_FIFO_SIZE,
-					    &sbuf->buf_start, GFP_KERNEL);
+					    (dma_addr_t *) &sbuf->buf_start, GFP_KERNEL);
 	if (!ctx->buf_vaddr) {
 		ret = -ENOMEM;
 		goto err_free_ctx;
