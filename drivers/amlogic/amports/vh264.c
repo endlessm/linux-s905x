@@ -1605,6 +1605,13 @@ static void vh264_isr(void)
 					prog_frame = 0;
 			}
 
+#ifdef CONFIG_VIDEO_MESON_VDEC
+			/* For simplicity, treat all frames as progressive.
+			 * Interlaced frames already have their 2 fields combined into
+			 * a single canvas. */
+			prog_frame = 1;
+#endif
+
 			if ((!force_interlaced_frame)
 				&& (prog_frame
 					|| (pic_struct_present
