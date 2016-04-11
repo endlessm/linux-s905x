@@ -533,7 +533,7 @@ static int vidioc_decoder_cmd(struct file *file, void *priv,
 	if (ctx->eos_state >= EOS_TAIL_WAITING)
 		return -EINVAL;
 
-	ctx->eos_tail_buf = dma_alloc_coherent(NULL, EOS_TAIL_BUF_SIZE,
+	ctx->eos_tail_buf = dma_alloc_coherent(ctx->dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE,
 					       &ctx->eos_tail_buf_phys,
 					       GFP_KERNEL);
 	if (!ctx->eos_tail_buf)
@@ -954,7 +954,7 @@ static int meson_vdec_release(struct file *file)
 		          sbuf->buf_start);
 
 	if (ctx->eos_tail_buf)
-		dma_free_coherent(NULL, EOS_TAIL_BUF_SIZE, ctx->eos_tail_buf,
+		dma_free_coherent(ctx->dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE, ctx->eos_tail_buf,
 				  ctx->eos_tail_buf_phys);
 
 	mutex_unlock(&dev->dev_mutex);
