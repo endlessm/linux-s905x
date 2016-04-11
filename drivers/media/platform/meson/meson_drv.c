@@ -960,7 +960,7 @@ static int meson_vdec_open(struct file *file)
 		goto err_free_ctx;
 	}
 
-	ctx->eos_tail_buf = dma_alloc_coherent(NULL, EOS_TAIL_BUF_SIZE,
+	ctx->eos_tail_buf = dma_alloc_coherent(dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE,
 					       &ctx->eos_tail_buf_phys,
 					       GFP_KERNEL);
 	if (!ctx->eos_tail_buf) {
@@ -1013,7 +1013,7 @@ err_stop_thread:
 	kthread_stop(ctx->image_thread);
 
 err_free_buf2:
-	dma_free_coherent(NULL, EOS_TAIL_BUF_SIZE, ctx->eos_tail_buf,
+	dma_free_coherent(dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE, ctx->eos_tail_buf,
 			  ctx->eos_tail_buf_phys);
 err_free_buf:
 	dma_free_coherent(dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
@@ -1042,7 +1042,7 @@ static int meson_vdec_release(struct file *file)
 	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
 		          sbuf->buf_start);
 
-	dma_free_coherent(NULL, EOS_TAIL_BUF_SIZE, ctx->eos_tail_buf,
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE, ctx->eos_tail_buf,
 		ctx->eos_tail_buf_phys);
 
 	mutex_unlock(&dev->dev_mutex);
