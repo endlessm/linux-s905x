@@ -245,7 +245,7 @@ static void parse_next_buffer(struct vdec_ctx *ctx)
 
 	ctx->esparser_busy = true;
 
-	v4l2_info(&ctx->dev->v4l2_dev, "parsing at pts %li.%lis offset %x\n",
+	v4l2_info(&ctx->dev->v4l2_dev, "parsing at pts %li.%lis offset %zu\n",
 		buf->v4l2_buf.timestamp.tv_sec, buf->v4l2_buf.timestamp.tv_usec,
 		ctx->parsed_len);
 
