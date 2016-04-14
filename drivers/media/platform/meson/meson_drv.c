@@ -19,7 +19,6 @@
 #include <linux/amlogic/amports/ptsserv.h>
 #include <linux/amlogic/amports/vformat.h>
 #include <linux/amlogic/amports/vframe_provider.h>
-#include <linux/amlogic/amports/dsp_register.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-event.h>
@@ -196,7 +195,7 @@ static void eos_check_idle(unsigned long arg)
 	 * FIXME: experiment and check that 256 bytes is the upper limit here
 	 * before the data is actually flushed. */
 	if (vf_peek(RECEIVER_NAME) ||
-	    READ_VREG(VLD_MEM_VIFIFO_LEVEL) > 256 ||
+	    vh264_vififo_level() > 256 ||
 	    vh264_output_is_starved()) {
 		run_eos_idle_timer(ctx);
 		return;

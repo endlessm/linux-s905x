@@ -1912,6 +1912,11 @@ bool vh264_output_is_starved(void)
 		READ_VREG(AV_SCRATCH_9) & (1 << 31);
 }
 
+int vh264_vififo_level(void)
+{
+	return READ_VREG(VLD_MEM_VIFIFO_LEVEL);
+}
+
 static void vh264_put_timer_func(unsigned long arg)
 {
 	struct timer_list *timer = (struct timer_list *)arg;
