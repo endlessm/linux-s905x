@@ -84,10 +84,6 @@ static DEFINE_MUTEX(vh264_mutex);
 #define DEFAULT_MEM_SIZE        (32*1024*1024)
 #define AVIL_DPB_BUFF_SIZE      0x01ec2000
 
-#define DEF_BUF_START_ADDR            0x1000000
-#define V_BUF_ADDR_OFFSET_NEW         (0x1ee000)
-#define V_BUF_ADDR_OFFSET             (0x13e000)
-
 #define PIC_SINGLE_FRAME        0
 #define PIC_TOP_BOT_TOP         1
 #define PIC_BOT_TOP_BOT         2
@@ -170,6 +166,20 @@ static const struct vframe_operations_s vh264_vf_provider_ops = {
 };
 
 static struct vframe_provider_s vh264_vf_prov;
+
+static DEFINE_DMA_ATTRS(dma_attrs_contig_nokmap);
+
+/* In the address space used in the microcode, the work area is mapped
+ * at the offset below, and the microcode adds this offset to the
+ * address passed in the protocol in order to find the buffer. */
+
+#define UCODE_BUF_START_OFFSET		0x1000000
+
+#define UCODE_WORK_AREA_SIZE		0x13e000
+#define UCODE_WORK_AREA_SIZE_NEW	0x1ee000
+static void *ucode_work_area_cookie;
+static dma_addr_t ucode_work_area_phys;
+
 /*TODO irq*/
 #if 1
 static u32 frame_buffer_size;
@@ -196,8 +206,6 @@ static struct timer_list recycle_timer;
 static u32 stat;
 static unsigned long buf_start, buf_end;
 static u32 buf_size;
-static s32 buf_offset;
-static u32 ucode_map_start;
 static u32 pts_outside;
 static u32 sync_outside;
 static u32 dec_control;
@@ -2034,6 +2042,7 @@ int vh264_set_trickmode(unsigned long trickmode)
 
 static void vh264_prot_init(void)
 {
+	u32 ucode_work_addr = ucode_work_area_phys - UCODE_BUF_START_OFFSET;
 
 	while (READ_VREG(DCAC_DMA_CTRL) & 0x8000)
 		;
@@ -2076,7 +2085,7 @@ static void vh264_prot_init(void)
 	WRITE_VREG(PSCALE_CTRL, 0);
 
 	WRITE_VREG(AV_SCRATCH_0, 0);
-	WRITE_VREG(AV_SCRATCH_1, buf_offset);
+	WRITE_VREG(AV_SCRATCH_1, ucode_work_addr);
 	WRITE_VREG(AV_SCRATCH_G, mc_dma_handle);
 	WRITE_VREG(AV_SCRATCH_7, 0);
 	WRITE_VREG(AV_SCRATCH_8, 0);
@@ -2101,7 +2110,7 @@ static void vh264_prot_init(void)
 	else
 		CLEAR_VREG_MASK(AV_SCRATCH_F, 1 << 6);
 
-	WRITE_VREG(AV_SCRATCH_I, (u32)(sei_data_buffer_phys - buf_offset));
+	WRITE_VREG(AV_SCRATCH_I, (u32)(sei_data_buffer_phys - ucode_work_addr));
 	WRITE_VREG(AV_SCRATCH_J, 0);
 	/* #if MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON8 */
 	if ((get_cpu_type() >= MESON_CPU_MAJOR_ID_M8) && !is_meson_mtvd_cpu()) {
@@ -2203,6 +2212,22 @@ static s32 vh264_init(void)
 	/* pr_info("\nvh264_init\n"); */
 	init_timer(&recycle_timer);
 
+	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXTVBB)
+		ucode_work_area_cookie = dma_alloc_attrs(amports_get_dma_device(), UCODE_WORK_AREA_SIZE_NEW,
+							 &ucode_work_area_phys,
+							 GFP_KERNEL,
+							 &dma_attrs_contig_nokmap);
+	else
+		ucode_work_area_cookie = dma_alloc_attrs(amports_get_dma_device(), UCODE_WORK_AREA_SIZE,
+							 &ucode_work_area_phys,
+							 GFP_KERNEL,
+							 &dma_attrs_contig_nokmap);
+
+	if (!ucode_work_area_cookie) {
+		pr_err("vh264: failed to allocate microcode work area\n");
+		return -ENOMEM;
+	}
+
 	stat |= STAT_TIMER_INIT;
 
 	vh264_running = 0;/* init here to reset last_mb_width&last_mb_height */
@@ -2219,6 +2244,7 @@ static s32 vh264_init(void)
 
 	query_video_status(0, &trickmode_fffb);
 
+	/* ucode work area is allocated by CMA, which already provides zeroed memory. */
 #if 0
 	if (!trickmode_fffb) {
 		void __iomem *p =
@@ -2496,6 +2522,13 @@ static int vh264_stop(int mode)
 			}
 	  }
 #endif
+	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXTVBB)
+		dma_free_attrs(amports_get_dma_device(), UCODE_WORK_AREA_SIZE_NEW, ucode_work_area_cookie,
+			       ucode_work_area_phys, &dma_attrs_contig_nokmap);
+	else
+		dma_free_attrs(amports_get_dma_device(), UCODE_WORK_AREA_SIZE, ucode_work_area_cookie,
+			       ucode_work_area_phys, &dma_attrs_contig_nokmap);
+
 	return 0;
 }
 
@@ -2718,18 +2751,13 @@ static int amvdec_h264_probe(struct platform_device *pdev)
 		return -EFAULT;
 	}
 
-	ucode_map_start = pdata->mem_start;
 	buf_size = pdata->mem_end - pdata->mem_start + 1;
 	if (buf_size < DEFAULT_MEM_SIZE) {
 		pr_info("\namvdec_h264 memory size not enough.\n");
 		return -ENOMEM;
 	}
 
-	buf_offset = pdata->mem_start - DEF_BUF_START_ADDR;
-	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXTVBB)
-		buf_start = V_BUF_ADDR_OFFSET_NEW + pdata->mem_start;
-	else
-		buf_start = V_BUF_ADDR_OFFSET + pdata->mem_start;
+	buf_start = pdata->mem_start;
 	buf_end = pdata->mem_end;
 	if (pdata->sys_info)
 		vh264_amstream_dec_info = *pdata->sys_info;
@@ -2747,8 +2775,7 @@ static int amvdec_h264_probe(struct platform_device *pdev)
 		   sei_data_buffer, sei_data_buffer_phys,
 		   (u32)sei_data_buffer_remap); */
 	}
-	pr_debug("amvdec_h264 mem-addr=%lx,buff_offset=%x,buf_start=%lx buf_size %x\n",
-		   pdata->mem_start, buf_offset, buf_start, buf_size);
+	pr_debug("amvdec_h264 mem-addr=%lx,buf_start=%lx\n", pdata->mem_start, buf_start);
 
 	if (vh264_init() < 0) {
 		pr_info("\namvdec_h264 init failed.\n");
@@ -2810,6 +2837,8 @@ static struct codec_profile_t amvdec_h264_profile = {
 static int __init amvdec_h264_driver_init_module(void)
 {
 	pr_debug("amvdec_h264 module init\n");
+	dma_set_attr(DMA_ATTR_FORCE_CONTIGUOUS, &dma_attrs_contig_nokmap);
+	dma_set_attr(DMA_ATTR_NO_KERNEL_MAPPING, &dma_attrs_contig_nokmap);
 #ifdef CONFIG_GE2D_KEEP_FRAME
 	ge2d_videoh264task_init();
 #endif
