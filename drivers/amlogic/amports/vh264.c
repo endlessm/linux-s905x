@@ -1899,6 +1899,7 @@ static void vh264_isr(void)
 
 	sei_itu35_flags = READ_VREG(AV_SCRATCH_J);
 	if (sei_itu35_flags & (1 << 15)) {	/* data ready */
+#if 0
 		/* int ltemp; */
 		/* unsigned char *daddr; */
 		unsigned int sei_itu35_wp = (sei_itu35_flags >> 16) & 0xffff;
@@ -1937,6 +1938,9 @@ static void vh264_isr(void)
 		wakeup_userdata_poll(sei_itu35_wp,
 				(unsigned long)sei_data_buffer,
 				USER_DATA_SIZE, sei_itu35_data_length);
+#else
+		WRITE_VREG(AV_SCRATCH_J, 0);
+#endif
 	}
 #ifdef HANDLE_H264_IRQ
 	return IRQ_HANDLED;
