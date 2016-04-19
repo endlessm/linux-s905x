@@ -861,22 +861,10 @@ static void vh264_set_params(struct work_struct *work)
 #if 0
 	if (is_4k)
 		addr += ((mb_total << 8) + (mb_total << 7));/*keep last frame */
-#endif
-	/* Treat the co_mv working buffer as a plane, for memory management
-	 * convenience. SCRATCH_1 points to the start,
-	 * and SCRATCH_4 denotes the end */
 
-	co_mv_len = mb_total * mb_mv_byte * max_reference_size;
-	if (!alloc_plane(co_mv_len, (dma_addr_t *) &co_mv_phys))
-		goto err_plane_alloc;
-
-	WRITE_VREG(AV_SCRATCH_1, co_mv_phys);
-	WRITE_VREG(AV_SCRATCH_3, post_canvas);	/* should be modified later */
-#if 0
 	canvas_read((READ_VCBUS_REG(VD1_IF0_CANVAS0) & 0xff), &cur_canvas);
 	disp_addr = (cur_canvas.addr + 7) >> 3;
 #endif
-	WRITE_VREG(AV_SCRATCH_4, co_mv_phys + co_mv_len);
 	if (!(READ_VREG(AV_SCRATCH_F) & 0x1)) {
 		free_planes();
 #if 0
@@ -1149,6 +1137,18 @@ static void vh264_set_params(struct work_struct *work)
 		} else
 			h264_ar = frame_height * 0x100 / frame_width;
 	}
+
+	/* Treat the co_mv working buffer as a plane, for memory management
+	 * convenience. SCRATCH_1 points to the start,
+	 * and SCRATCH_4 denotes the end */
+
+	co_mv_len = mb_total * mb_mv_byte * max_reference_size;
+	if (!alloc_plane(co_mv_len, (dma_addr_t *) &co_mv_phys))
+		goto err_plane_alloc;
+
+	WRITE_VREG(AV_SCRATCH_1, co_mv_phys);
+	WRITE_VREG(AV_SCRATCH_3, post_canvas);	/* should be modified later */
+	WRITE_VREG(AV_SCRATCH_4, co_mv_phys + co_mv_len);
 
 	WRITE_VREG(AV_SCRATCH_0,
 			(max_reference_size << 24) | (actual_dpb_size << 16) |
