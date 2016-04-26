@@ -487,6 +487,8 @@ extern unsigned char hdmi_pll_mode; /* 1, use external clk as hdmi pll source */
 
 extern void HDMITX_Meson_Init(struct hdmitx_dev *hdmitx_device);
 
+void hdmitx_hpd_plugout(struct hdmitx_dev *hdev);
+void hdmitx_hpd_plugin(struct hdmitx_dev *hdev);
 extern void hdmitx_hpd_plugin_handler(struct work_struct *work);
 extern void hdmitx_hpd_plugout_handler(struct work_struct *work);
 extern void hdmitx_internal_intr_handler(struct work_struct *work);
