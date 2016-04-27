@@ -2080,20 +2080,6 @@ static int get_downstream_hdcp_ver(void)
 
 static DEFINE_MUTEX(setclk_mutex);
 
-void hdmitx_hpd_plugin(struct hdmitx_dev *hdev)
-{
-	mutex_lock(&setclk_mutex);
-
-	hdev->hpd_state = 1;
-	hdmitx_get_edid(hdev);
-	set_disp_mode_auto();
-	hdev->hdmitx_event &= ~HDMI_TX_HPD_PLUGIN;
-	hdmitx_set_audio(hdev, &(hdev->cur_audio_param), hdmi_ch);
-	switch_set_state(&sdev, 1);
-
-	mutex_unlock(&setclk_mutex);
-}
-
 void hdmitx_hpd_plugin_handler(struct work_struct *work)
 {
 	char bksv_buf[5];
@@ -2131,32 +2117,6 @@ static void clear_hdr_info(struct hdmitx_dev *hdev)
 		info->hdr_info.lumi_min = 0;
 		pr_info("hdmitx: clear RX hdr info\n");
 	}
-}
-
-void hdmitx_hpd_plugout(struct hdmitx_dev *hdev)
-{
-	hdev->hdcp_mode = 0;
-	hdev->HWOp.CntlDDC(hdev, DDC_HDCP_MUX_INIT, 1);
-	hdev->HWOp.CntlDDC(hdev, DDC_HDCP_OP, HDCP14_OFF);
-	mutex_lock(&setclk_mutex);
-	hdev->ready = 0;
-	hdev->hpd_state = 0;
-	hdev->HWOp.CntlConfig(hdev, CONF_CLR_AVI_PACKET, 0);
-	hdev->HWOp.CntlDDC(hdev, DDC_HDCP_MUX_INIT, 1);
-	hdev->HWOp.CntlDDC(hdev, DDC_HDCP_OP, HDCP14_OFF);
-	hdev->HWOp.CntlMisc(hdev, MISC_TMDS_PHY_OP, TMDS_PHY_DISABLE);
-	pr_info("hdmitx: plugout\n");
-	hdev->HWOp.CntlMisc(hdev, MISC_ESM_RESET, 0);
-	if (hdev->gpio_i2c_enable) {
-		edid_read_flag = 0;
-		hdmi_print(INF, SYS "unmux DDC for gpio read edid\n");
-		hdev->HWOp.CntlDDC(hdev, DDC_PIN_MUX_OP, PIN_UNMUX);
-	}
-	hdmitx_edid_clear(hdev);
-	hdmitx_edid_ram_buffer_clear(hdev);
-	switch_set_state(&sdev, 0);
-	hdev->hdmitx_event &= ~HDMI_TX_HPD_PLUGOUT;
-	mutex_unlock(&setclk_mutex);
 }
 
 void hdmitx_hpd_plugout_handler(struct work_struct *work)

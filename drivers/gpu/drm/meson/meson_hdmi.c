@@ -187,34 +187,21 @@ static void hdmi_hotplug_work_func(struct work_struct *work)
 		container_of(work, struct meson_connector, hotplug_work.work);
 	struct drm_connector *connector = &meson_connector->base;
 	struct drm_device *dev = connector->dev;
-	static bool post_uboot = true;
 	hdmitx_dev_t *hdev = get_hdmitx_device();
-
 
 	/* Clear interrupt status flags. We don't actually care what
 	 * the INTR was about. */
 //	hdmi_wr_reg(OTHER_BASE_ADDR + HDMI_OTHER_INTR_STAT_CLR, 0xF);
 
 	if (hdev->hdmitx_event & (HDMI_TX_HPD_PLUGIN)) {
-		/*
-		 * FIXME: everything works perfectly fine when a HPD_PLUGOUT event
-		 * is detected before a HPD_PLUGIN event. This is of course always
-		 * true _except_ when we boot with an HDMI cable already attached.
-		 * In this case we only detect a HPD_PLUGIN event at boot. Unfortunately
-		 * when U-Boot uses the HDMI to display the S905 logo it
-		 * leaves the hardware in an unconsistent state. To recover from this
-		 * situation we force a fake HPD_PLUGOUT event before issuing the
-		 * HPD_PLUGIN to reset the hardware, this is done only once the first
-		 * time we see the HPD_PLUGIN eventk.
-		 */
-		if (post_uboot)
-			hdmitx_hpd_plugout(hdev);
+		hdev->HWOp.CntlConfig(hdev, CONF_CLR_AVI_PACKET, 0);
+		hdev->HWOp.CntlDDC(hdev, DDC_HDCP_MUX_INIT, 1);
 
-		hdmitx_hpd_plugin(hdev);
-	} else if (hdev->hdmitx_event & (HDMI_TX_HPD_PLUGOUT))
-		hdmitx_hpd_plugout(hdev);
+		hdmitx_get_edid(hdev);
+		set_disp_mode_auto();
 
-	post_uboot = false;
+		hdev->hdmitx_event &= ~HDMI_TX_HPD_PLUGIN;
+	}
 
 	/* This interrupt means one of three things: HPD rose, HPD fell,
 	 * or EDID has changed. For all three, emit a hotplug event. */
@@ -243,15 +230,8 @@ static irqreturn_t meson_hdmi_intr_handler(int irq, void *user_data)
 			data32 &= ~(1 << 1);
 	}
 
-	if (data32 & (1 << 1)) {
+	if (data32 & (1 << 1))
 		hdev->hdmitx_event |= HDMI_TX_HPD_PLUGIN;
-		hdev->hdmitx_event &= ~HDMI_TX_HPD_PLUGOUT;
-	}
-
-	if (data32 & (1 << 2)) {
-		hdev->hdmitx_event |= HDMI_TX_HPD_PLUGOUT;
-		hdev->hdmitx_event &= ~HDMI_TX_HPD_PLUGIN;
-	}
 
 next:
 	hdmitx_wr_reg(HDMITX_TOP_INTR_STAT_CLR, data32 | 0x6);
