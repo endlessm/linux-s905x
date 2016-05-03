@@ -45,7 +45,9 @@
 #include <asm/uaccess.h>
 
 #include "queue.h"
+#if !defined(CONFIG_ARCH_MESON64_ENDLESS_S905X)
 #include <linux/mmc/emmc_partitions.h>
+#endif
 
 #if defined(CONFIG_ARCH_MESON64_ENDLESS_S905X)
 #include <linux/endless/s905x.h>
@@ -2501,7 +2503,9 @@ static int mmc_blk_probe(struct mmc_card *card)
 	if (mmc_add_disk(md))
 		goto out;
 
+#if !defined(CONFIG_ARCH_MESON64_ENDLESS_S905X)
 	aml_emmc_partition_ops(card, md->disk); /* add by gch */
+#endif
 
 	list_for_each_entry(part_md, &md->part, part) {
 		if (mmc_add_disk(part_md))
