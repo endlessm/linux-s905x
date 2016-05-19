@@ -47,9 +47,11 @@ struct meson_cvbs_work {
 	struct drm_device *dev;
 };
 
+#if 0
 static int gpio_pal = -1;
 static int gpio_ntsc = -1;
 static struct meson_cvbs_work meson_cvbs_work;
+#endif
 
 static void meson_encoder_destroy(struct drm_encoder *encoder)
 {
@@ -92,7 +94,7 @@ static void meson_encoder_mode_set(struct drm_encoder *encoder,
 	/* A write to this badly-named register is also needed to unblank
 	 * the CVBS output.
 	 */
-	aml_write_reg32(P_VPU_HDMI_DATA_OVR, 0);
+	hd_write_reg(P_VPU_HDMI_DATA_OVR, 0);
 }
 
 static const struct drm_encoder_helper_funcs meson_encoder_helper_funcs = {
@@ -145,16 +147,19 @@ static void meson_connector_destroy(struct drm_connector *connector)
 
 static bool read_hpd_gpio(void)
 {
-	return !!(aml_read_reg32(P_PREG_PAD_GPIO3_I) & (1 << 19));
+	return !!(hd_read_reg(P_PREG_PAD_GPIO3_I) & (1 << 19));
 }
 
 static enum meson_cvbs_switch_state meson_cvbs_get_switch_state(void)
 {
+#if 0
 	if (gpio_pal > 0 && amlogic_get_value(gpio_pal, "mesondrm pal"))
 		return MESON_CVBS_SWITCH_PAL;
 	if (gpio_ntsc > 0 && amlogic_get_value(gpio_ntsc, "mesondrm ntsc"))
 		return MESON_CVBS_SWITCH_NTSC;
 	return MESON_CVBS_SWITCH_UNDEFINED;
+#endif
+	return MESON_CVBS_SWITCH_PAL;
 }
 
 static enum drm_connector_status meson_connector_detect(struct drm_connector *connector, bool force)
@@ -259,6 +264,7 @@ fail:
 	return NULL;
 }
 
+#if 0
 static void cvbs_switch_work_func(struct work_struct *work)
 {
 	struct meson_cvbs_work *meson_cvbs_work =
@@ -366,3 +372,4 @@ int meson_cvbs_init(struct drm_device *dev)
 out:
 	return ret;
 }
+#endif
