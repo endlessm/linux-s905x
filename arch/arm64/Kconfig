@@ -152,6 +152,12 @@ config ARCH_XGENE
 	help
 	  This enables support for AppliedMicro X-Gene SOC Family
 
+config ARCH_MESON64_ENDLESS_S905X
+	bool "Endless S905X board"
+	help
+	  This enables support for the board S905X of Endless
+	  which is based on ARMv8 SoC of AMLogic, Inc.
+
 endmenu
 
 menu "Bus support"
