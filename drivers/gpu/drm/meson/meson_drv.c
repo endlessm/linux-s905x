@@ -1317,7 +1317,7 @@ static int meson_pdev_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id dt_match[] = {
-	{ .compatible = "amlogic,meson8b-display" },
+	{ .compatible = "amlogic,mesongxl-display" },
 	{}
 };
 MODULE_DEVICE_TABLE(of, dt_match);
