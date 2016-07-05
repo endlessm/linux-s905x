@@ -1135,3 +1135,9 @@
 &defendkey {
 	status = "okay";
 };
+
+&gpu {
+       min_pp = <3>;
+       def_clk = <4>;
+       min_clk = <4>;
+};
