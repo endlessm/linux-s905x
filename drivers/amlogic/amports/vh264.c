@@ -214,7 +214,7 @@ static u32 decoder_debug_flag;
 #ifdef DROP_B_FRAME_FOR_1080P_50_60FPS
 static u32 last_interlaced;
 #endif
-static bool is_4k;
+static bool is_4k = false;
 static unsigned char h264_first_pts_ready;
 static bool h264_first_valid_pts_ready;
 static u32 h264pts1, h264pts2;
@@ -643,8 +643,10 @@ static void vh264_set_params(struct work_struct *work)
 	unsigned int frame_mbs_only_flag;
 	unsigned int chroma_format_idc, chroma444, video_signal;
 	unsigned int crop_infor, crop_bottom, crop_right, level_idc;
+#if 0
 	u32 disp_addr = 0xffffffff;
 	struct canvas_s cur_canvas;
+#endif
 	if (!atomic_read(&vh264_active))
 		return;
 	mutex_lock(&vh264_mutex);
@@ -763,6 +765,7 @@ static void vh264_set_params(struct work_struct *work)
 	if (params_cb)
 		params_cb(params_cb_data, 0, frame_width, frame_height);
 
+#if 0
 	 is_4k = (mb_total > 8160) ? true:false;
 	if (is_4k) {
 		/*4k2k*/
@@ -781,6 +784,7 @@ static void vh264_set_params(struct work_struct *work)
 			return;
 		}
 	} else {
+#endif
 		actual_dpb_size = (frame_buffer_size - mb_total * mb_mv_byte *
 				max_reference_size) / (mb_total * 384);
 		actual_dpb_size = min(actual_dpb_size, VF_BUF_NUM);
@@ -792,7 +796,9 @@ static void vh264_set_params(struct work_struct *work)
 		}
 		 pr_info("actual_dpb_size %d max_dpb_size %d\n",
 				 actual_dpb_size, max_dpb_size);
+#if 0
 	}
+#endif
 	if (max_dpb_size == 0)
 		max_dpb_size = actual_dpb_size;
 	else
@@ -802,12 +808,16 @@ static void vh264_set_params(struct work_struct *work)
 	max_reference_size++;
 
 	start_addr = addr = buf_start;
+#if 0
 	if (is_4k)
 		addr += ((mb_total << 8) + (mb_total << 7));/*keep last frame */
+#endif
 	WRITE_VREG(AV_SCRATCH_1, addr);
 	WRITE_VREG(AV_SCRATCH_3, post_canvas);	/* should be modified later */
+#if 0
 	canvas_read((READ_VCBUS_REG(VD1_IF0_CANVAS0) & 0xff), &cur_canvas);
 	disp_addr = (cur_canvas.addr + 7) >> 3;
+#endif
 	if ((addr + mb_total * mb_mv_byte * max_reference_size)
 		>= buf_end) {
 				fatal_error_flag =
@@ -820,9 +830,12 @@ static void vh264_set_params(struct work_struct *work)
 	addr += mb_total * mb_mv_byte * max_reference_size;
 	WRITE_VREG(AV_SCRATCH_4, addr);
 	if (!(READ_VREG(AV_SCRATCH_F) & 0x1)) {
+#if 0
 		bool use_alloc = is_4k ? true:false;
 		int alloc_count = 0;
+#endif
 		for (i = 0; i < actual_dpb_size; i++) {
+#if 0
 			if (((addr + (mb_total << 8) + (mb_total << 7))
 					>= buf_end) && (!use_alloc)) {
 				pr_info("start alloc for %d\n", i);
@@ -893,6 +906,7 @@ static void vh264_set_params(struct work_struct *work)
 			/*4k keep last frame */
 			if (is_4k && ((addr + 7) >> 3) == disp_addr)
 				addr = start_addr;
+#endif
 			if (i <= 21) {
 				buffer_spec[i].y_addr = addr;
 				addr += mb_total << 8;
@@ -2563,6 +2577,7 @@ static int vh264_stop(int mode)
 		}
 	}
 
+#if 0
 	  for (i = 0; i < ARRAY_SIZE(buffer_spec); i++) {
 			if (buffer_spec[i].phy_addr) {
 				if (is_4k && !get_blackout_policy())
@@ -2576,6 +2591,7 @@ static int vh264_stop(int mode)
 				}
 			}
 	  }
+#endif
 	return 0;
 }
 
