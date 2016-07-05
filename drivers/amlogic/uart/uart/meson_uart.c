@@ -543,14 +543,14 @@ static void meson_uart_change_speed(struct uart_port *port, unsigned long baud)
 		if (xtal_tick_en) {
 			/*xtal_tick_en first*/
 			aml_aobus_update_bits((0x19<<2), (1<<18), (1<<18));
-			dev_info(&pdev->dev, "ttyS%d use xtal(24M) %d change %ld to %ld\n",
+			dev_dbg(&pdev->dev, "ttyS%d use xtal(24M) %d change %ld to %ld\n",
 				port->line, port->uartclk,
 				mup->baud, baud);
 			val = (port->uartclk) / baud  - 1;
 			val |= (AML_UART_BAUD_USE|AML_UART_BAUD_XTAL
 				|AML_UART_BAUD_XTAL_TICK);
 		} else {
-			dev_info(&pdev->dev, "ttyS%d use xtal(8M) %d change %ld to %ld\n",
+			dev_dbg(&pdev->dev, "ttyS%d use xtal(8M) %d change %ld to %ld\n",
 				port->line, port->uartclk,
 				mup->baud, baud);
 			val = (port->uartclk / 3) / baud  - 1;
