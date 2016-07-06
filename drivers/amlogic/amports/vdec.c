@@ -168,7 +168,9 @@ int vdec_set_resource(unsigned long start, unsigned long end, struct device *p)
 s32 vdec_init(enum vformat_e vf, int is_4k)
 {
 	s32 r;
+#if 0
 	int retry_num = 0;
+#endif
 	int more_buffers = 0;
 	if (inited_vcodec_num >= SUPPORT_VCODEC_NUM) {
 		pr_err("We only support the one video code at each time\n");
@@ -192,6 +194,7 @@ s32 vdec_init(enum vformat_e vf, int is_4k)
 		vdec_dev_reg.mem_start,
 		vdec_dev_reg.mem_end);
 
+#if 0
 /*retry alloc:*/
 	while (vdec_dev_reg.mem_start == vdec_dev_reg.mem_end) {
 		int alloc_size = vdec_default_buf_size[vf] * SZ_1M;
@@ -233,6 +236,7 @@ s32 vdec_init(enum vformat_e vf, int is_4k)
 		break;/*alloc end*/
 	}
 /*alloc end:*/
+#endif
 	vdec_dev_reg.flag = 0;
 
 	vdec_device = platform_device_alloc(vdec_device_name[vf], -1);
