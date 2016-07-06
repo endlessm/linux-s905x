@@ -115,6 +115,7 @@
 			size = <0x0 0xd000000>;
 			alignment = <0x0 0x400000>;
 			linux,contiguous-region;
+			status = "disable";
 		};
 		picdec_cma_reserved:linux,picdec {
 			compatible = "shared-dma-pool";
@@ -128,6 +129,7 @@
 			compatible = "amlogic, codec-mm-reserved";
 			size = <0x0 0x4100000>;
 			alignment = <0x0 0x100000>;
+			status = "disable";
  			//no-map;
 		};
 		/*vm_reserved:linux,vm {
@@ -204,7 +206,7 @@
 			compatible = "amlogic, codec, mm";
 			memory-region = <&codec_mm_cma &codec_mm_reserved>;
 			dev_name = "codec_mm";
-			status = "okay";
+			status = "disable";
 	};
 			ethmac: ethernet@0xc9410000 {
 						compatible = "amlogic, gxbb-rmii-dwmac";
