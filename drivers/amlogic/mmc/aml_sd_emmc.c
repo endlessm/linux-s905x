@@ -48,6 +48,9 @@
 struct tasklet_struct sd_emmc_finish_tasklet;
 #endif
 
+extern void extern_wifi_set_enable(int is_on);
+extern void sdio_reinit(void);
+
 /*for multi host claim host*/
 static struct mmc_claim aml_sd_emmc_claim;
 struct amlsd_host *host_emmc = NULL;
@@ -3681,6 +3684,17 @@ static int aml_sd_emmc_probe(struct platform_device *pdev)
 		sdio_host = mmc;
 		/* do NOT run mmc_rescan for the first time */
 		/* mmc->rescan_entered = 1;*/
+
+			/*
+			 * This is taken from platform_wifi_power_on(). This is needed to power-up
+			 * the WiFi transceiver at boot to be recognized as a SDIO device. udev
+			 * will load the correspective module.
+			 */
+			extern_wifi_set_enable(0);
+			msleep(500);
+			extern_wifi_set_enable(1);
+			msleep(500);
+			sdio_reinit();
 		}
 	}
 
