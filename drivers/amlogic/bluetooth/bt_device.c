@@ -77,14 +77,14 @@ static void bt_device_on(struct bt_dev_data *pdata)
 	if (pdata->gpio_en > 0)
 		gpio_direction_output(pdata->gpio_en,
 			pdata->power_low_level);
-	msleep(20);
+	msleep(200);
 	if (pdata->gpio_reset > 0)
 		gpio_direction_output(pdata->gpio_reset,
 			!pdata->power_low_level);
 	if (pdata->gpio_en > 0)
 		gpio_direction_output(pdata->gpio_en,
 			!pdata->power_low_level);
-	msleep(20);
+	msleep(200);
 }
 
 static void bt_device_off(struct bt_dev_data *pdata)
@@ -197,7 +197,7 @@ static int bt_probe(struct platform_device *pdev)
 	bt_device_init(pdata);
 	/* default to bluetooth off */
 	/* rfkill_switch_all(RFKILL_TYPE_BLUETOOTH, 1); */
-	bt_device_off(pdata);
+	/* bt_device_off(pdata); */
 
 	bt_rfk = rfkill_alloc("bt-dev", &pdev->dev,
 		RFKILL_TYPE_BLUETOOTH,

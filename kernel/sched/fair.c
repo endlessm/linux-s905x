@@ -2373,6 +2373,9 @@ static inline void __update_task_entity_contrib(struct sched_entity *se)
 	contrib = se->avg.runnable_avg_sum * scale_load_down(se->load.weight);
 	contrib /= (se->avg.runnable_avg_period + 1);
 	se->avg.load_avg_contrib = scale_load(contrib);
+	contrib = se->avg.runnable_avg_sum * scale_load_down(NICE_0_LOAD);
+	contrib /= (se->avg.runnable_avg_period + 1);
+	se->avg.load_avg_ratio = scale_load(contrib);
 }
 
 /* Compute the current contribution to load_avg by se, return any delta */
@@ -4647,8 +4650,8 @@ static struct sched_entity *hmp_get_lightest_task(
  * hmp_packing_enabled: runtime control over pack/spread
  * hmp_full_threshold: Consider a CPU with this much unweighted load full
  */
-unsigned int hmp_up_threshold = 700;
-unsigned int hmp_down_threshold = 512;
+unsigned int hmp_up_threshold = 450;
+unsigned int hmp_down_threshold = 250;
 #ifdef CONFIG_SCHED_HMP_PRIO_FILTER
 unsigned int hmp_up_prio = NICE_TO_PRIO(CONFIG_SCHED_HMP_PRIO_FILTER_VAL);
 #endif

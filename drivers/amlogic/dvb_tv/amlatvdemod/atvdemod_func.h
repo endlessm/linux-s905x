@@ -162,6 +162,7 @@ extern void atv_dmd_wr_word(unsigned long block_address,
 extern void atv_dmd_wr_byte(unsigned long block_address,
 				unsigned long reg_addr,
 				unsigned long data);
+extern void set_audio_gain_val(int val);
 extern void atv_dmd_soft_reset(void);
 extern void atv_dmd_input_clk_32m(void);
 extern void read_version_register(void);
@@ -172,12 +173,16 @@ extern void configure_receiver(int Broadcast_Standard,
 			       unsigned int Tuner_IF_Frequency,
 			       int Tuner_Input_IF_inverted, int GDE_Curve,
 			       int sound_format);
+extern int atvdemod_clk_init(void);
 extern int atvdemod_init(void);
 extern void atvdemod_uninit(void);
 extern void atv_dmd_set_std(void);
 extern void retrieve_vpll_carrier_lock(int *lock);
 extern void retrieve_video_lock(int *lock);
 extern int retrieve_vpll_carrier_afc(void);
+
+extern int get_atvdemod_snr_val(void);
+extern int aml_atvdemod_get_snr(struct dvb_frontend *fe);
 
 /*atv demod block address*/
 /*address interval is 4, because it's 32bit interface,
@@ -275,7 +280,7 @@ vs_freq==60,freq_hz=15734,freq_hz_cvrt=0x101c9
 #define AML_ATV_DEMOD_FREQ_50HZ_VERT	0xffff	/*65535*/
 #define AML_ATV_DEMOD_FREQ_60HZ_VERT	0x101c9	/*65993*/
 
-#define CARR_AFC_DEFAULT_VAL 500
+#define CARR_AFC_DEFAULT_VAL 0xffff
 
 enum amlatvdemod_snr_level_e {
 	very_low = 1,

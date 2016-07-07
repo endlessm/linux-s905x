@@ -70,6 +70,9 @@ MODULE_PARM_DESC(enable_db_reg, "enable/disable tvafe load reg");
 static int vga_yuv422_enable;
 module_param(vga_yuv422_enable, int, 0664);
 MODULE_PARM_DESC(vga_yuv422_enable, "vga_yuv422_enable");
+static bool tvafe_dbg_enable;
+module_param(tvafe_dbg_enable, bool, 0644);
+MODULE_PARM_DESC(tvafe_dbg_enable, "enable/disable tvafe debug enable");
 
 static struct tvafe_info_s *g_tvafe_info;
 /***********the  version of changing log************************/
@@ -223,7 +226,19 @@ static ssize_t tvafe_store(struct device *dev,
 		afe_version, cvd_version, adc_version);
 		pr_info("LAST VERSION:[tvafe version]:%s\t[cvd2 version]:%s\t[adc version]:%s\t[format table version]:NUll\n",
 		last_afe_version, last_cvd_version, last_adc_version);
-
+	} else if (!strncmp(buff, "snowon", strlen("snowon"))) {
+		tvafe_snow_config(1);
+		tvafe_snow_config_clamp(1);
+		devp->flags |= TVAFE_FLAG_DEV_SNOW_FLAG;
+		pr_info("[tvafe..]%s:tvafe snowon\n", __func__);
+	} else if (!strncmp(buff, "snowoff", strlen("snowoff"))) {
+		tvafe_snow_config(0);
+		tvafe_snow_config_clamp(0);
+		devp->flags &= (~TVAFE_FLAG_DEV_SNOW_FLAG);
+		pr_info("[tvafe..]%s:tvafe snowoff\n", __func__);
+	} else if (!strncmp(buff, "state", strlen("state"))) {
+		pr_info("[tvafe..]%s:devp->flags:0x%x\n",
+			__func__, devp->flags);
 	} else
 		pr_info("[%s]:invaild command.\n", __func__);
 	return count;
@@ -669,7 +684,7 @@ static int tvafe_get_v_fmt(void)
 {
 	int fmt = 0;
 	if (TVIN_SM_STATUS_STABLE != tvin_get_sm_status(0)) {
-		pr_err("%s tvafe is not STABLE\n", __func__);
+		pr_info("%s tvafe is not STABLE\n", __func__);
 		return 0;
 	}
 	fmt = tvafe_cvd2_get_format(&g_tvafe_info->cvd2);
@@ -923,7 +938,7 @@ int tvafe_dec_isr(struct tvin_frontend_s *fe, unsigned int hcnt64)
 		return 0;
 	/* if there is any error or overflow, do some reset, then rerurn -1;*/
 	if ((tvafe->parm.info.status != TVIN_SIG_STATUS_STABLE) ||
-			(tvafe->parm.info.fmt == TVIN_SIG_FMT_NULL)) {
+		(tvafe->parm.info.fmt == TVIN_SIG_FMT_NULL)) {
 		return -1;
 	}
 
@@ -999,8 +1014,14 @@ bool tvafe_is_nosig(struct tvin_frontend_s *fe)
 		ret = tvafe_adc_no_sig();
 #endif
 	if ((port >= TVIN_PORT_CVBS0) && (port <= TVIN_PORT_SVIDEO7)) {
-
 		ret = tvafe_cvd2_no_sig(&tvafe->cvd2, &devp->mem);
+
+		/*fix black side when config atv snow*/
+		if (ret && (port == TVIN_PORT_CVBS3) &&
+			(devp->flags & TVAFE_FLAG_DEV_SNOW_FLAG) &&
+			(tvafe->cvd2.config_fmt == TVIN_SIG_FMT_CVBS_PAL_I) &&
+			(tvafe->cvd2.info.state != TVAFE_CVD2_STATE_FIND))
+			tvafe_snow_config_acd();
 
 		/* normal sigal & adc reg error, reload source mux */
 		if (tvafe->cvd2.info.adc_reload_en && !ret)
@@ -1086,8 +1107,9 @@ enum tvin_sig_fmt_e tvafe_get_fmt(struct tvin_frontend_s *fe)
 		fmt = tvafe_cvd2_get_format(&tvafe->cvd2);
 
 	tvafe->parm.info.fmt = fmt;
-
-	pr_info("[tvafe..] %s fmt:%s.\n", __func__, tvin_sig_fmt_str(fmt));
+	if (tvafe_dbg_enable)
+		pr_info("[tvafe..] %s fmt:%s.\n", __func__,
+			tvin_sig_fmt_str(fmt));
 
 	return fmt;
 }
@@ -1337,7 +1359,7 @@ static long tvafe_ioctl(struct file *file,
 		return -EPERM;
 	}
 
-		switch (cmd) {
+	switch (cmd) {
 
 		case TVIN_IOC_LOAD_REG:
 			{
@@ -1359,6 +1381,18 @@ static long tvafe_ioctl(struct file *file,
 
 			break;
 		    }
+		case TVIN_IOC_S_AFE_SONWON:
+			devp->flags |= TVAFE_FLAG_DEV_SNOW_FLAG;
+			tvafe_snow_config(1);
+			if (tvafe_dbg_enable)
+				pr_info("[tvafe..]TVIN_IOC_S_AFE_SONWON\n");
+			break;
+		case TVIN_IOC_S_AFE_SONWOFF:
+			tvafe_snow_config(0);
+			devp->flags &= (~TVAFE_FLAG_DEV_SNOW_FLAG);
+			if (tvafe_dbg_enable)
+				pr_info("[tvafe..]TVIN_IOC_S_AFE_SONWOFF\n");
+			break;
 #if 0
 		case TVIN_IOC_S_AFE_ADC_DIFF:
 			if (copy_from_user(&clamp_diff, argp,
@@ -2240,6 +2274,36 @@ static int tvafe_drv_resume(struct platform_device *pdev)
 }
 #endif
 
+static void tvafe_drv_shutdown(struct platform_device *pdev)
+{
+	struct tvafe_dev_s *tdevp;
+	struct tvafe_info_s *tvafe;
+	tdevp = platform_get_drvdata(pdev);
+	tvafe = &tdevp->tvafe;
+
+	/* close afe port first */
+	if (tdevp->flags & TVAFE_FLAG_DEV_OPENED) {
+
+		pr_info("tvafe: shutdown module, close afe port first\n");
+		/*close afe port,disable tvafe_is_nosig check*/
+		/*tdevp->flags &= (~TVAFE_FLAG_DEV_OPENED);*/
+		/*del_timer_sync(&tdevp->timer);*/
+
+		/**set cvd2 reset to high**/
+		tvafe_cvd2_hold_rst(&tdevp->tvafe.cvd2);
+		/**disable av out**/
+		tvafe_enable_avout(tvafe->parm.port, false);
+	}
+
+    /*disable and reset tvafe clock*/
+	/*this cause crash when cmd reboot..*/
+	/*tvafe_enable_module(false);
+
+	pr_info("tvafe: shutdown module\n");*/
+
+	return;
+}
+
 static const struct of_device_id tvafe_dt_match[] = {
 	{
 	.compatible     = "amlogic, tvafe",
@@ -2254,6 +2318,7 @@ static struct platform_driver tvafe_driver = {
 	.suspend    = tvafe_drv_suspend,
 	.resume     = tvafe_drv_resume,
 #endif
+	.shutdown   = tvafe_drv_shutdown,
 	.driver     = {
 		.name   = TVAFE_DRIVER_NAME,
 		.of_match_table = tvafe_dt_match,

@@ -10,7 +10,7 @@
 #define Wr_reg_bits(adr, val, start, len)  \
 		aml_vcbus_update_bits(adr, ((1<<len)-1)<<start, val<<start)
 #define Rd_reg_bits(adr, start, len)  \
-		(aml_read_vcbus(adr)&(((1<<len)-1)<<start))
+		((aml_read_vcbus(adr)&(((1<<len)-1)<<start))>>start)
 
 unsigned int RDMA_WR(unsigned int adr, unsigned int val);
 unsigned int RDMA_RD(unsigned int adr);
@@ -18,7 +18,8 @@ unsigned int RDMA_WR_BITS(unsigned int adr, unsigned int val,
 		unsigned int start, unsigned int len);
 unsigned int RDMA_RD_BITS(unsigned int adr, unsigned int start,
 		unsigned int len);
-
+#define VPU_WRARB_REQEN_SLV_L1C1	((0x2795)) /* << 2) + 0xd0100000) */
+#define VPU_ARB_DBG_STAT_L1C1		((0x27b4)) /* << 2) + 0xd0100000) */
 #define SRSHARP0_SHARP_SR2_CTRL     ((0x3257)) /* << 2) + 0xd0100000) */
 /* Bit 24,  sr2_dejaggy_en  */
 

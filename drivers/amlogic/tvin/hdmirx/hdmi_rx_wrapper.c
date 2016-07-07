@@ -64,6 +64,22 @@
 #define MAX_REPEAT_COUNT	127
 #define MAX_REPEAT_DEPTH	7
 #define MAX_KSV_LIST_SIZE	(MAX_KSV_SIZE*MAX_REPEAT_COUNT)
+/*size of one format in edid*/
+#define FORMAT_SIZE			sizeof(struct edid_audio_block_t)
+#define is_audio_support(x) (((x) == AUDIO_FORMAT_LPCM) || \
+		((x) == AUDIO_FORMAT_DTS) || ((x) == AUDIO_FORMAT_DDP))
+#define EDID_SIZE			256
+#define EDID_HDR_SIZE			7
+#define HDR_IGNOR_TIME			500 /*5s*/
+#define MAX_EDID_BUF_SIZE 1024
+#define EDID_DEFAULT_START		132
+#define EDID_DESCRIP_OFFSET		2
+#define EDID_BLOCK1_OFFSET		128
+#define MAX_KEY_BUF_SIZE 512
+#define KSV_LIST_WR_TH			100
+#define KSV_V_WR_TH			500
+#define KSV_LIST_WR_MAX			5
+#define KSV_LIST_WAIT_DELAY		500/*according to the timer,5s*/
 
 static int audio_enable = 1;
 MODULE_PARM_DESC(audio_enable, "\naudio_enable\n");
@@ -83,12 +99,12 @@ MODULE_PARM_DESC(sig_pll_unlock_max, "\n sig_pll_unlock_max\n");
 module_param(sig_pll_unlock_max, int, 0664);
 
 static int sig_pll_lock_cnt;
-static unsigned sig_pll_lock_max = 30;
+static unsigned sig_pll_lock_max = 5;
 MODULE_PARM_DESC(sig_pll_lock_max, "\n sig_pll_lock_max\n");
 module_param(sig_pll_lock_max, int, 0664);
 
 static int dwc_rst_wait_cnt;
-static int dwc_rst_wait_cnt_max = 1;
+static int dwc_rst_wait_cnt_max = 40;
 MODULE_PARM_DESC(dwc_rst_wait_cnt_max, "\n dwc_rst_wait_cnt_max\n");
 module_param(dwc_rst_wait_cnt_max, int, 0664);
 
@@ -101,17 +117,29 @@ MODULE_PARM_DESC(sig_clk_chg_max, "\n sig_clk_chg_max\n");
 module_param(sig_clk_chg_max, int, 0664);
 
 static int sig_lost_lock_cnt;
-static int sig_lost_lock_max = 3;
+static int sig_lost_lock_max = 5;
 MODULE_PARM_DESC(sig_lost_lock_max, "\n sig_lost_lock_max\n");
 module_param(sig_lost_lock_max, int, 0664);
 
 static int sig_stable_cnt;
-static int sig_stable_max = 40;
+static int sig_stable_max = 20;
 MODULE_PARM_DESC(sig_stable_max, "\n sig_stable_max\n");
 module_param(sig_stable_max, int, 0664);
 
+static int debug_1;
+MODULE_PARM_DESC(debug_1, "\n debug_1\n");
+module_param(debug_1, int, 0664);
+
+static bool clk_debug = true;
+MODULE_PARM_DESC(clk_debug, "\n clk_debug\n");
+module_param(clk_debug, bool, 0664);
+
+static int cnt_1 = 10;
+MODULE_PARM_DESC(cnt_1, "\n cnt_1\n");
+module_param(cnt_1, int, 0664);
+
 static int hpd_wait_cnt;
-static int hpd_wait_max = 10;
+static int hpd_wait_max = 11;
 MODULE_PARM_DESC(hpd_wait_max, "\n hpd_wait_max\n");
 module_param(hpd_wait_max, int, 0664);
 
@@ -121,7 +149,7 @@ MODULE_PARM_DESC(sig_unstable_max, "\n sig_unstable_max\n");
 module_param(sig_unstable_max, int, 0664);
 
 static int sig_unready_cnt;
-static int sig_unready_max = 3;/* 10; */
+static int sig_unready_max = 5;/* 10; */
 MODULE_PARM_DESC(sig_unready_max, "\n sig_unready_max\n");
 module_param(sig_unready_max, int, 0664);
 
@@ -131,12 +159,12 @@ MODULE_PARM_DESC(unstable_protect_max, "\n unstable_protect_max\n");
 module_param(unstable_protect_max, int, 0664);
 
 static int stable_protect_cnt;
-static int stable_protect_max = 22;
+static int stable_protect_max = 15;
 MODULE_PARM_DESC(stable_protect_max, "\n stable_protect_max\n");
 module_param(stable_protect_max, int, 0664);
 
 static int pll_stable_protect_cnt;
-static int pll_stable_protect_max = 25;
+static int pll_stable_protect_max = 15;
 MODULE_PARM_DESC(pll_stable_protect_max, "\n pll_stable_protect_max\n");
 module_param(pll_stable_protect_max, int, 0664);
 
@@ -162,6 +190,10 @@ module_param(rgb_quant_range, int, 0664);
 int yuv_quant_range = 0;
 MODULE_PARM_DESC(yuv_quant_range, "\n yuv_quant_range\n");
 module_param(yuv_quant_range, int, 0664);
+
+bool scdc_cfg_en = true;
+MODULE_PARM_DESC(scdc_cfg_en, "\n scdc_cfg_en\n");
+module_param(scdc_cfg_en, bool, 0664);
 
 int it_content;
 MODULE_PARM_DESC(it_content, "\n it_content\n");
@@ -222,7 +254,7 @@ static int acr_mode;
 MODULE_PARM_DESC(acr_mode, "\n acr_mode\n");
 module_param(acr_mode, int, 0664);
 
-static int edid_mode = EDID_LIST_AML;
+static int edid_mode;
 MODULE_PARM_DESC(edid_mode, "\n edid_mode\n");
 module_param(edid_mode, int, 0664);
 
@@ -269,6 +301,29 @@ module_param(audio_channel_count, int, 0664);
 static int frame_rate;
 MODULE_PARM_DESC(frame_rate, "\n frame_rate\n");
 module_param(frame_rate, int, 0664);
+static int hdcp22_sts = 0xff;
+MODULE_PARM_DESC(hdcp22_sts, "\n hdcp22_sts\n");
+module_param(hdcp22_sts, int, 0664);
+
+static int hdcp22_capable_sts = 0xff;
+MODULE_PARM_DESC(hdcp22_capable_sts, "\n hdcp22_capable_sts\n");
+module_param(hdcp22_capable_sts, int, 0664);
+
+static bool need_rst_esm;
+MODULE_PARM_DESC(need_rst_esm, "\n need_rst_esm\n");
+module_param(need_rst_esm, bool, 0664);
+
+static bool esm_auth_fail_en;
+MODULE_PARM_DESC(esm_auth_fail_en, "\n esm_auth_fail_en\n");
+module_param(esm_auth_fail_en, bool, 0664);
+
+static int hdcp22_authenticated = 0xff;
+MODULE_PARM_DESC(hdcp22_authenticated, "\n hdcp22_authenticated\n");
+module_param(hdcp22_authenticated, int, 0664);
+
+static int pre_hdcp22_sts = 0xff;
+MODULE_PARM_DESC(pre_hdcp22_sts, "\n pre_hdcp22_sts\n");
+module_param(pre_hdcp22_sts, int, 0664);
 
 static bool use_audioresample_reset;
 MODULE_PARM_DESC(use_audioresample_reset, "\n use_audioresample_reset\n");
@@ -297,13 +352,22 @@ static bool auto_switch_off;	/* only for hardware test */
 MODULE_PARM_DESC(auto_switch_off, "\n auto_switch_off\n");
 module_param(auto_switch_off, bool, 0664);
 int wait_clk_stable;
-static int clk_stable_max = 30;
+static int clk_stable_max = 350;
 MODULE_PARM_DESC(clk_stable_max, "\n clk_stable_max\n");
 module_param(clk_stable_max, int, 0664);
 
-static bool is_phy_reset;
+int force_wait_cnt;
+static int force_wait_max = 30;
+MODULE_PARM_DESC(force_wait_max, "\n force_wait_max\n");
+module_param(force_wait_max, int, 0664);
+
+static bool is_phy_reset = true;
 MODULE_PARM_DESC(is_phy_reset, "\n is_phy_reset\n");
 module_param(is_phy_reset, bool, 0664);
+
+static bool need_clk_stable;
+MODULE_PARM_DESC(need_clk_stable, "\n need_clk_stable\n");
+module_param(need_clk_stable, bool, 0664);
 
 static int eq_calc_mode;
 MODULE_PARM_DESC(eq_calc_mode, "\n eq_calc_mode\n");
@@ -343,9 +407,10 @@ module_param(new_hdr_lum, bool, 0664);
 
 /*edid original data from device*/
 static unsigned char receive_hdcp[MAX_KSV_LIST_SIZE];
-static int hdcp_len = MAX_KSV_LIST_SIZE;
+static int hdcp_array_len = MAX_KSV_LIST_SIZE;
 MODULE_PARM_DESC(receive_hdcp, "\n receive_hdcp\n");
-module_param_array(receive_hdcp, byte, &hdcp_len, 0664);
+module_param_array(receive_hdcp, byte, &hdcp_array_len, 0664);
+static int hdcp_len;
 MODULE_PARM_DESC(hdcp_len, "\n hdcp_len\n");
 module_param(hdcp_len, int, 0664);
 
@@ -361,6 +426,9 @@ static bool repeat_plug;
 MODULE_PARM_DESC(repeat_plug, "\n repeat_plug\n");
 module_param(repeat_plug, bool, 0664);
 
+static int up_phy_addr;/*d c b a 4bit*/
+MODULE_PARM_DESC(up_phy_addr, "\n up_phy_addr\n");
+module_param(up_phy_addr, int, 0664);
 
 #ifdef HDCP22_ENABLE
 /* to inform ESM whether the cable is connected or not */
@@ -373,7 +441,7 @@ MODULE_PARM_DESC(reset_esm_flag, "\n reset_esm_flag\n");
 module_param(reset_esm_flag, bool, 0664);
 
 /* to inform ESM whether the cable is connected or not */
-static bool video_stable_to_esm;
+bool video_stable_to_esm;
 MODULE_PARM_DESC(video_stable_to_esm, "\n video_stable_to_esm\n");
 module_param(video_stable_to_esm, bool, 0664);
 
@@ -420,12 +488,36 @@ module_param(enable_hdcp22_esm_log, bool, 0664);
 int hdcp22_firmware_ok_flag = 1;
 MODULE_PARM_DESC(hdcp22_firmware_ok_flag, "\n hdcp22_firmware_ok_flag\n");
 module_param(hdcp22_firmware_ok_flag, int, 0664);
+
+int esm_err_force_14;
+MODULE_PARM_DESC(esm_err_force_14, "\n esm_err_force_14\n");
+module_param(esm_err_force_14, int, 0664);
+
+static int reboot_esm_done;
+MODULE_PARM_DESC(reboot_esm_done, "\n reboot_esm_done\n");
+module_param(reboot_esm_done, int, 0664);
+
+int esm_reboot_lvl = 1;
+MODULE_PARM_DESC(esm_reboot_lvl, "\n esm_reboot_lvl\n");
+module_param(esm_reboot_lvl, int, 0664);
+
+int enable_esm_reboot;
+MODULE_PARM_DESC(enable_esm_reboot, "\n enable_esm_reboot\n");
+module_param(enable_esm_reboot, int, 0664);
 #endif
 
-static int pre_port = 0xff;
+int pre_port = 0xff;
 module_param(pre_port, int, 0664);
 MODULE_PARM_DESC(pre_port, "pre_port");
 
+int scdc_tmds_try_max = 4;
+module_param(scdc_tmds_try_max, int, 0664);
+MODULE_PARM_DESC(scdc_tmds_try_max, "scdc_tmds_try_max");
+
+int do_hpd_reset_flag = 0;
+int wait_hpd_reset_max = 300;
+module_param(wait_hpd_reset_max, int, 0664);
+MODULE_PARM_DESC(wait_hpd_reset_max, "wait_hpd_reset_max");
 /****************************/
 /*  func enhancements  */
 /****************************/
@@ -466,18 +558,6 @@ struct rx_s rx;
 #define TMDS_TOLERANCE  (4000)
 #define MAX_AUDIO_SAMPLE_RATE		(192000+1000)	/* 192K */
 #define MIN_AUDIO_SAMPLE_RATE		(8000-1000)	/* 8K */
-/*size of one format in edid*/
-#define FORMAT_SIZE			sizeof(struct edid_audio_block_t)
-#define is_audio_support(x) (((x) == AUDIO_FORMAT_LPCM) || \
-		((x) == AUDIO_FORMAT_DTS) || ((x) == AUDIO_FORMAT_DDP))
-#define EDID_SIZE			256
-#define EDID_HDR_SIZE			7
-#define HDR_IGNOR_TIME			500 /*5s*/
-#define MAX_EDID_BUF_SIZE 1024
-#define EDID_DEFAULT_START		132
-#define EDID_DESCRIP_OFFSET		2
-#define EDID_BLOCK1_OFFSET		128
-#define MAX_KEY_BUF_SIZE 512
 
 struct hdmi_rx_ctrl_hdcp init_hdcp_data;
 static char key_buf[MAX_KEY_BUF_SIZE];
@@ -716,6 +796,7 @@ static void dump_audio_info(unsigned char enable);
 static unsigned int get_index_from_ref(struct hdmi_rx_ctrl_video *video_par);
 static void rx_modify_edid(unsigned char *buffer,
 				int len, unsigned char *addition);
+static void rx_start_repeater_auth(void);
 
 /* add for hot plug det */
 void hdmirx_plug_det(struct work_struct *work)
@@ -723,6 +804,12 @@ void hdmirx_plug_det(struct work_struct *work)
 	unsigned int tmp_5v, check_cnt, i, val;
 
 	cancel_delayed_work(&hpd_dwork);
+	if (rx.hdcp.hdcp_version) {
+		switch_set_state(&rx.hdcp.switch_hdcp_auth, 0);
+		switch_set_state(&rx.hdcp.switch_hdcp_auth,
+					rx.hdcp.hdcp_version);
+		rx.hdcp.hdcp_version = HDCP_VERSION_NONE;
+	}
 	if (log_flag & VIDEO_LOG)
 		rx_print("plug detect1:%d\n", pwr_sts);
 	val = 0;
@@ -748,7 +835,6 @@ void hdmirx_plug_det(struct work_struct *work)
 		hdmirx_wait_query();
 		if (log_flag & VIDEO_LOG)
 			rx_print("plug detect2:%d\n", pwr_sts);
-		/* switch_set_state(&hpd_sdev, pwr_sts); */
 	}
 
 	return;
@@ -914,7 +1000,7 @@ static int hdmi_rx_ctrl_irq_handler(struct hdmi_rx_ctrl *ctx)
 	uint32_t intr_pedc = 0;
 	/* uint32_t intr_aud_clk = 0; */
 	uint32_t intr_aud_fifo = 0;
-
+	uint32_t intr_hdcp22 = 0;
 
 	bool clk_handle_flag = false;
 	bool video_handle_flag = false;
@@ -955,6 +1041,14 @@ static int hdmi_rx_ctrl_irq_handler(struct hdmi_rx_ctrl *ctx)
 	if (intr_aud_fifo != 0)
 		hdmirx_wr_dwc(DWC_AUD_FIFO_ICLR, intr_aud_fifo);
 
+
+	intr_hdcp22 =
+		hdmirx_rd_dwc(DWC_HDMI2_ISTS) &
+	    hdmirx_rd_dwc(DWC_HDMI2_IEN);
+
+	if (intr_hdcp22 != 0)
+		hdmirx_wr_dwc(DWC_HDMI2_ICLR, intr_hdcp22);
+
 	/* check hdmi open status before dwc isr */
 	if (!rx.open_fg) {
 		if (log_flag & 0x1000)
@@ -965,10 +1059,14 @@ static int hdmi_rx_ctrl_irq_handler(struct hdmi_rx_ctrl *ctx)
 	if (intr_hdmi != 0) {
 		/*if (get(intr_hdmi, CLK_CHANGE) != 0) */
 			/* clk_handle_flag = true; */
-		if (get(intr_hdmi, hdmi_ists_en) != 0) {
+		if (get(intr_hdmi, AKSV_RCV) != 0) {
 			if (log_flag & 0x100)
-				rx_print("++++++ clock change\n");
-			clk_handle_flag = true;
+				rx_print("[RX]receive aksv\n");
+			/*clk_handle_flag = true;*/
+			rx.hdcp.hdcp_version = HDCP_VERSION_14;
+			queue_delayed_work(hpd_wq, &hpd_dwork,
+					msecs_to_jiffies(5));
+			rx_start_repeater_auth();
 		}
 		if (get(intr_hdmi, DCM_CURRENT_MODE_CHG) != 0) {
 			if (log_flag & 0x400)
@@ -992,6 +1090,28 @@ static int hdmi_rx_ctrl_irq_handler(struct hdmi_rx_ctrl *ctx)
 		}
 		ctx->debug_irq_video_mode++;
 	}
+
+	if (intr_hdcp22 != 0) {
+		if (get(intr_hdcp22, _BIT(2)) != 0)
+			hdcp22_authenticated = 2;
+		if (get(intr_hdcp22, _BIT(3)) != 0)
+			hdcp22_authenticated = 3;
+		if (get(intr_hdcp22, _BIT(4)) != 0)
+			hdcp22_authenticated = 4;
+
+		if (get(intr_hdcp22, _BIT(0)) != 0)
+			hdcp22_capable_sts = 1;
+		if (get(intr_hdcp22, _BIT(1)) != 0)
+			hdcp22_capable_sts = 0;
+		if (log_flag & HDCP_LOG) {
+			rx_print("hdcp22_authenticated = %d\n",
+						hdcp22_authenticated);
+			rx_print("hdcp22_capable_sts = %d\n",
+						hdcp22_capable_sts);
+		}
+		hdcp22_sts = intr_hdcp22;
+	}
+
 
 	if (intr_pedc != 0) {
 		/* hdmirx_wr_dwc(RA_PDEC_ICLR, intr_pedc); */
@@ -1074,9 +1194,8 @@ irqreturn_t irq_handler(int irq, void *params)
 			"RX IRQ invalid parameter");
 		return IRQ_HANDLED;
 	}
-
 	hdmirx_top_intr_stat = hdmirx_rd_top(TOP_INTR_STAT);
-reisr:hdmirx_wr_top(TOP_INTR_STAT_CLR, hdmirx_top_intr_stat);
+	hdmirx_wr_top(TOP_INTR_STAT_CLR, hdmirx_top_intr_stat);
 	/* modify interrupt flow for isr loading */
 	/* top interrupt handler */
 	if ((hdmirx_top_intr_stat & (0xf << 2)) ||
@@ -1115,13 +1234,14 @@ reisr:hdmirx_wr_top(TOP_INTR_STAT_CLR, hdmirx_top_intr_stat);
 
 	/* if (hdmirx_top_intr_stat & (0xf << 6)) */
 	/* check the ip interrupt again */
+	/*
 	hdmirx_top_intr_stat = hdmirx_rd_top(TOP_INTR_STAT);
-	if (hdmirx_top_intr_stat & (1 << 31)) {
+	if (hdmirx_top_intr_stat & (1 << 31) && !cec_has_irq()) {
 		if (log_flag & 0x100)
 			rx_print("[isr] need clear ip irq---\n");
 		goto reisr;
 
-	}
+	}*/
 	return IRQ_HANDLED;
 }
 
@@ -1197,13 +1317,17 @@ int hdmirx_hw_get_color_fmt(void)
 {
 	int color_format = 0;
 	int format = rx.pre_params.video_format;
-	if (rx.pre_params.sw_dvi && force_dvi_rgb) {
+	if (rx.pre_params.sw_dvi) {
 		if (HDMI_640x480p60 == rx.pre_params.sw_vic)
 			format = 0;
 
 		if ((HDMI_800_600 <= rx.pre_params.sw_vic) &&
 			(HDMI_1680_1050 >= rx.pre_params.sw_vic))
 			format = 0;
+
+		if (force_dvi_rgb)
+			format = 0;
+
 	}
 
 	if (rx.change > 0)
@@ -1233,6 +1357,11 @@ int hdmirx_hw_get_color_fmt(void)
 int rx_get_colordepth(void)
 {
 	int ret = rx.pre_params.deep_color_mode / 3;
+	if (pc_mode_en == 1) {
+		if ((rx.pre_params.video_mode == HDMI_2160p_60hz_420) ||
+			(rx.pre_params.video_mode == HDMI_4096p_60hz_420))
+			ret = 8;
+	}
 	return ret;
 }
 
@@ -1342,7 +1471,42 @@ struct freq_ref_s freq_ref[] = {
 	{HDMI_2880x576p50_16x9, 0, 108000, 2880, 576, 576, 576, 9, 2500},
 	{HDMI_1080i50_1250, 1, 72000, 1920, 540, 540, 540, 0, 2500},
 	{HDMI_720p24, 0, 74250, 1280, 720, 1470, 720, 0, 1200},
+	{HDMI_720p25, 0, 74250, 1280, 720, 1470, 720, 0, 1250},
 	{HDMI_720p30, 0, 74250, 1280, 720, 1470, 720, 0, 1500},
+
+/*extend format 100hz,120hz,200hz,240hz*/
+	{HDMI_480p60, 0, 54000, 720, 480, 1005, 480, 0, 6000},
+	{HDMI_480p60_16x9, 0, 54000, 720, 480, 1005, 480, 0, 6000},
+	{HDMI_480i60, 1, 54000, 1440, 240, 240, 240, 1, 6000},
+	{HDMI_480i60_16x9, 1, 54000, 1440, 240, 240, 240, 1, 6000},
+	{HDMI_480p60, 0, 108000, 720, 480, 1005, 480, 0, 12000},
+	{HDMI_480p60_16x9, 0, 108000, 720, 480, 1005, 480, 0, 12000},
+	{HDMI_480i60, 1, 108000, 1440, 240, 240, 240, 1, 12000},
+	{HDMI_480i60_16x9, 1, 108000, 1440, 240, 240, 240, 1, 12000},
+
+	{HDMI_576p50, 0, 54000, 720, 576, 1201, 576, 0, 5000},
+	{HDMI_576p50_16x9, 0, 54000, 720, 576, 1201, 576, 0, 5000},
+	{HDMI_576i50, 1, 54000, 1440, 288, 288, 288, 1, 5000},
+	{HDMI_576i50_16x9, 1, 54000, 1440, 288, 288, 288, 1, 5000},
+	{HDMI_576i50_16x9, 1, 54000, 1440, 145, 145, 145, 2, 5000},
+	{HDMI_576p50, 0, 108000, 720, 576, 1201, 576, 0, 10000},
+	{HDMI_576p50_16x9, 0, 108000, 720, 576, 1201, 576, 0, 10000},
+	{HDMI_576i50, 1, 108000, 1440, 288, 288, 288, 1, 10000},
+	{HDMI_576i50_16x9, 1, 108000, 1440, 288, 288, 288, 1, 10000},
+	{HDMI_576i50_16x9, 1, 108000, 1440, 145, 145, 145, 2, 10000},
+
+	{HDMI_720p60, 0, 148500, 1280, 720, 1470, 720, 0, 6000},
+	{HDMI_720p60, 0, 297000, 1280, 720, 1470, 720, 0, 12000},
+	{HDMI_720p50, 0, 148500, 1280, 720, 1470, 720, 0, 5000},
+	{HDMI_720p50, 0, 297000, 1280, 720, 1470, 720, 0, 10000},
+
+	{HDMI_1080i60, 1, 148500, 1920, 540, 2228, 1103, 0, 6000},
+	{HDMI_1080i60, 1, 297000, 1920, 540, 2228, 1103, 0, 12000},
+	{HDMI_1080i50, 1, 148500, 1920, 540, 2228, 1103, 0, 5000},
+	{HDMI_1080i50, 1, 297000, 1920, 540, 2228, 1103, 0, 10000},
+
+	{HDMI_1080p60, 0, 297000, 1920, 1080, 1080, 2160, 0, 6000},
+	{HDMI_1080p50, 0, 297000, 1920, 1080, 1080, 2160, 0, 5000},
 
 /* vesa format*/
 	{HDMI_800_600, 0, 0, 800, 600, 600, 600, 0, 0},
@@ -1497,9 +1661,13 @@ enum tvin_sig_fmt_e hdmirx_hw_get_fmt(void)
 	case HDMI_1080p24:	/*32 */
 		if (is_frame_packing())
 			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_24HZ_FRAME_PACKING;
-		else if (is_alternative())
-			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_24HZ_ALTERNATIVE;
-		else
+		else if (is_alternative()) {
+			if (rx.pre_params.video_format == 3)
+				fmt = TVIN_SIG_FMT_HDMI_3840_2160_00HZ;
+			else
+				fmt =
+				TVIN_SIG_FMT_HDMI_1920X1080P_24HZ_ALTERNATIVE;
+		} else
 			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_24HZ;
 		break;
 	case HDMI_576p50:	/*17 */
@@ -1533,14 +1701,21 @@ enum tvin_sig_fmt_e hdmirx_hw_get_fmt(void)
 			fmt = TVIN_SIG_FMT_HDMI_3840_2160_00HZ;
 		break;
 	case HDMI_1080p25:	/*33 */
-		fmt = TVIN_SIG_FMT_HDMI_1920X1080P_25HZ;
+		if (is_alternative() && (rx.pre_params.video_format == 3))
+			fmt = TVIN_SIG_FMT_HDMI_3840_2160_00HZ;
+		else
+			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_25HZ;
 		break;
 	case HDMI_1080p30:	/*34 */
 		if (is_frame_packing())
 			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_30HZ_FRAME_PACKING;
-		else if (is_alternative())
-			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_30HZ_ALTERNATIVE;
-		else
+		else if (is_alternative()) {
+			if (rx.pre_params.video_format == 3)
+				fmt = TVIN_SIG_FMT_HDMI_3840_2160_00HZ;
+			else
+				fmt =
+				TVIN_SIG_FMT_HDMI_1920X1080P_30HZ_ALTERNATIVE;
+		} else
 			fmt = TVIN_SIG_FMT_HDMI_1920X1080P_30HZ;
 		break;
 	case HDMI_720p24:	/*60 */
@@ -1548,6 +1723,9 @@ enum tvin_sig_fmt_e hdmirx_hw_get_fmt(void)
 			fmt = TVIN_SIG_FMT_HDMI_1280X720P_24HZ_FRAME_PACKING;
 		else
 			fmt = TVIN_SIG_FMT_HDMI_1280X720P_24HZ;
+		break;
+	case HDMI_720p25:	/*61 */
+			fmt = TVIN_SIG_FMT_HDMI_1280X720P_25HZ;
 		break;
 	case HDMI_720p30:	/*62 */
 		if (is_frame_packing())
@@ -1693,13 +1871,12 @@ bool hdmirx_hw_is_nosig(void)
 	return rx.no_signal;
 }
 
-
 static bool is_packetinfo_change(struct hdmi_rx_ctrl_video *pre,
 				 struct hdmi_rx_ctrl_video *cur)
 {
 	/* 1. dvi */
-	/* if (cur->dvi != cur->sw_dvi) */
-	/* return true; */
+	if (cur->dvi != pre->sw_dvi)
+		return true;
 	/* 2. hdcp encrypted */
 	/* if((cur->hdcp_enc_state != pre->hdcp_enc_state)){ */
 	/* printk("cur->hdcp_enc_state=%d,pre->hdcp_enc_state=%d\n",
@@ -1724,7 +1901,6 @@ static bool is_packetinfo_change(struct hdmi_rx_ctrl_video *pre,
 	}
 	return false;
 }
-
 
 /*
  * check timing info
@@ -1797,13 +1973,14 @@ static int get_timing_fmt(struct hdmi_rx_ctrl_video *video_par)
 	frame_rate = video_par->refresh_rate * 2;
 
 	if ((frame_rate > 9000) && use_frame_rate_check) {
-		if (log_flag & 0x200)
+		if (log_flag & 0x200) {
 			rx_print("[hdmirx] frame_rate");
 			rx_print("not support,sw_vic:%d,",
 				     video_par->sw_vic);
 			rx_print("hw_vic:%d,frame_rate:%d\n",
 			     video_par->video_mode,
 			     frame_rate);
+		}
 		return ret;
 	}
 	/* HDMI format fast detection */
@@ -1830,6 +2007,8 @@ static int get_timing_fmt(struct hdmi_rx_ctrl_video *video_par)
 	/* hdmi mode */
 	if (freq_ref[i].vic != 0) {
 		/*found standard hdmi mode */
+		video_par->sw_dvi = video_par->dvi;
+
 		if ((video_par->video_mode == HDMI_1080p60)
 			&& (abs(video_par->hactive - 960)
 			<= diff_pixel_th)) {
@@ -1865,7 +2044,7 @@ static int get_timing_fmt(struct hdmi_rx_ctrl_video *video_par)
 			}
 		}
 		/************ repetition Check patch end ************/
-		if (log_flag & 0x200)
+		if (log_flag & 0x200) {
 			rx_print("[hdmirx] standard hdmi");
 			rx_print("mode,sw_vic:%d,",
 					video_par->sw_vic);
@@ -1873,6 +2052,7 @@ static int get_timing_fmt(struct hdmi_rx_ctrl_video *video_par)
 					video_par->video_mode);
 			rx_print("frame_rate:%d\n",
 			     frame_rate);
+		}
 		return ret;
 	}
 
@@ -1901,11 +2081,12 @@ static int get_timing_fmt(struct hdmi_rx_ctrl_video *video_par)
 			if (freq_ref[i].repeat != 9) {
 				if (video_par->repeat !=
 					 freq_ref[i].repeat) {
-					if (log_flag & PACKET_LOG)
+					if (log_flag & PACKET_LOG) {
 						rx_print("\n repeat err2");
 						rx_print("%d:%d(standard)",
 							video_par->repeat,
 							freq_ref[i].repeat);
+					}
 					video_par->repeat =
 						freq_ref[i].repeat;
 				}
@@ -1951,6 +2132,7 @@ static void Signal_status_init(void)
 	sig_unstable_reset_hpd_cnt = 0;
 	wait_no_signal_cnt = 0;
 	rx.no_signal = false;
+	rx.pre_state = 0;
 }
 
 /* ---------------------------------------------------------- */
@@ -2092,8 +2274,6 @@ bool is_clk_stable(void)
 	int clk;
 	clk = hdmirx_rd_phy(PHY_MAINFSM_STATUS1);
 	clk = (clk >> 8) & 1;
-	if (log_flag & PHY_LOG)
-		rx_print("clk_stable=%d\n", clk);
 	if (1 == clk)
 		return true;
 	else
@@ -2106,11 +2286,11 @@ bool is_low_freq_format(void)
 	clk = hdmirx_rd_phy(PHY_MAINFSM_STATUS1);
 	clk = (clk >> 10) & 1;
 	if (1 == clk) {
-		if (log_flag & PHY_LOG)
+		if (log_flag & VIDEO_LOG)
 			rx_print("under 94.5M\n");
 		return true;
 	} else {
-		if (log_flag & PHY_LOG)
+		if (log_flag & VIDEO_LOG)
 			rx_print("over 94.5M\n");
 		return false;
 	}
@@ -2131,20 +2311,35 @@ void rx_aud_pll_ctl(bool en)
 		wr_reg(HHI_ADC_PLL_CNTL4, 0x805);
 		tmp = hdmirx_rd_top(TOP_ACR_CNTL_STAT) | (1<<11);
 		hdmirx_wr_top(TOP_ACR_CNTL_STAT, tmp);
-
+		#if 0
 		if (use_audioresample_reset) {
-			wr_reg(AUD_RESAMPLE_CTRL0,
-				(rd_reg(AUD_RESAMPLE_CTRL0) |
-					0x10000000) & 0x7fffffff);
+			aml_write_cbus(AUD_RESAMPLE_CTRL0,
+				aml_read_cbus(AUD_RESAMPLE_CTRL0)
+					| (1 << 31));
+			aml_write_cbus(AUD_RESAMPLE_CTRL0,
+				aml_read_cbus(AUD_RESAMPLE_CTRL0) &
+					0x7fffffff);
+			aml_write_cbus(AUD_RESAMPLE_CTRL0,
+				aml_read_cbus(AUD_RESAMPLE_CTRL0)
+				| (1 << 29)
+				| (1 << 28));
 		}
+		#endif
 	} else{
 		/* disable pll, into reset mode */
 		wr_reg(HHI_AUD_PLL_CNTL, 0x20000000);
 		if (use_audioresample_reset) {
 			/* reset resample module */
-			wr_reg(AUD_RESAMPLE_CTRL0,
-				(rd_reg(AUD_RESAMPLE_CTRL0) |
-					0x80000000) & 0xefffffff);
+			aml_write_cbus(AUD_RESAMPLE_CTRL0,
+				aml_read_cbus(AUD_RESAMPLE_CTRL0)
+					| (1 << 31));
+			aml_write_cbus(AUD_RESAMPLE_CTRL0,
+				aml_read_cbus(AUD_RESAMPLE_CTRL0) &
+					0x7fffffff);
+			aml_write_cbus(AUD_RESAMPLE_CTRL0,
+				aml_read_cbus(AUD_RESAMPLE_CTRL0)
+				| (1 << 29)
+				| (1 << 28));
 		}
 	}
 }
@@ -2183,6 +2378,59 @@ static bool is_ddc_state_error(void)
 		return false;
 }
 
+void monitor_capable_sts(void)
+{
+	static int pre_sts_1 = 0xff;
+	static int pre_sts_2 = 0xff;
+	/* if (hdcp22_capable_sts != pre_sts) {
+		if (((2 == hdcp22_authenticated) ||
+			(0xff == hdcp22_authenticated)) &&
+			(0 == hdcp22_capable_sts) &&
+			(1 == pre_sts))	{
+			if (rx.state != FSM_SIG_READY) {
+				rx.state = FSM_WAIT_CLK_STABLE;
+				rx_print("\n force wait stable\n");
+			}
+		}
+		pre_sts = hdcp22_capable_sts;
+	} */
+	if ((pre_sts_1 != hdcp22_capable_sts) ||
+		(pre_sts_2 != hdcp22_authenticated)) {
+
+		if ((rx.state != FSM_WAIT_CLK_STABLE) &&
+			(rx.state != FSM_WAIT_HDCP_SWITCH) &&
+			(rx.state != FSM_SIG_READY)) {
+			rx.pre_state = rx.state;
+			rx.state = FSM_WAIT_HDCP_SWITCH;
+			if (log_flag & HDCP_LOG)
+				rx_print("\n esm change,force wait\n");
+		}
+	}
+	pre_sts_1 = hdcp22_capable_sts;
+	pre_sts_2 = hdcp22_authenticated;
+}
+
+void monitor_cable_clk_sts(void)
+{
+	static bool pre_sts = 0xff;
+	bool sts = is_clk_stable();
+	if (pre_sts != sts) {
+		rx_print("\ncable clk stable = %d\n", sts);
+		pre_sts = sts;
+	}
+	if ((sts == false) &&
+		(rx.state < FSM_SIG_READY) &&
+		(rx.state > FSM_HPD_READY)) {
+		if ((rx.state != FSM_WAIT_CLK_STABLE) &&
+			(rx.state != FSM_WAIT_HDCP_SWITCH) &&
+			(rx.state != FSM_SIG_READY)) {
+			rx.pre_state = rx.state;
+			rx.state = FSM_WAIT_CLK_STABLE;
+			if (log_flag & VIDEO_LOG)
+				rx_print("\n clk unstable,force wait\n");
+		}
+	}
+}
 void rx_dwc_reset(void)
 {
 	if (log_flag & VIDEO_LOG)
@@ -2194,23 +2442,117 @@ void rx_dwc_reset(void)
 	hdmirx_sw_reset(2);
 }
 
+void set_scdc_cfg(int hpdlow, int pwrprovided)
+{
+	hdmirx_wr_dwc(DWC_SCDC_CONFIG,
+		(hpdlow << 1) | (pwrprovided << 0));
+}
+
+bool hdmirx_tmds_34g(void)
+{
+	return rx.scdc_tmds_cfg >= scdc_tmds_try_max;
+}
+
+bool hdmirx_tmds_34g_max(void)
+{
+	return rx.scdc_tmds_cfg >= (scdc_tmds_try_max + 1);
+}
+
+#ifdef HDCP22_ENABLE
+void esm_reboot_func(void)
+{
+	if (esm_reboot_lvl == 1) {
+		hdmirx_set_hpd(rx.port, 0);
+		hdcp_22_on = 1;
+		hdcp22_kill_esm = 1;
+		mdelay(wait_hdcp22_cnt1);
+		hdcp22_kill_esm = 0;
+		mdelay(wait_hdcp22_cnt2);
+		hpd_to_esm = 0;
+		do_esm_rst_flag = 1;
+		hdmirx_wr_dwc(DWC_HDCP22_CONTROL, 0x0);
+		hdmirx_hdcp22_esm_rst();
+		mdelay(loadkey_22_hpd_delay);
+		hdmirx_wr_dwc(DWC_HDCP22_CONTROL,
+			0x1000);
+		hdmirx_hw_config();
+		hpd_to_esm = 1;
+		rx.state = FSM_HDMI5V_HIGH;
+	} else if (esm_reboot_lvl == 2) {
+		hdmirx_set_hpd(rx.port, 0);
+		hdcp_22_on = 1;
+		hdcp22_kill_esm = 1;
+		mdelay(wait_hdcp22_cnt1);
+		hdcp22_kill_esm = 0;
+		mdelay(wait_hdcp22_cnt2);
+		hpd_to_esm = 0;
+		do_esm_rst_flag = 1;
+		hdmirx_wr_dwc(DWC_HDCP22_CONTROL, 0x0);
+		mdelay(loadkey_22_hpd_delay);
+		hdmirx_wr_dwc(DWC_HDCP22_CONTROL,
+			0x1000);
+		hdmirx_hw_config();
+		hpd_to_esm = 1;
+		rx.state = FSM_HDMI5V_HIGH;
+	}
+	rx_print("esm_reboot_func\n");
+}
+void hdmirx_esm_hw_fault_detect(void)
+{
+	/* detect hdcp2.2 esm status */
+	if (((rx_hdcp22_rd(0x60)>>31) == 1)
+		&& (esm_err_force_14 == 0)) {
+		if (reboot_esm_done == 0) {
+			esm_reboot_func();
+			reboot_esm_done = 1;
+			rx_print("esm reboot done\n");
+		} else {
+			hdmirx_wr_dwc(0x81c,
+				0x2);
+			esm_err_force_14 = 1;
+			rx_print("force 1.4-0\n");
+		}
+	}
+
+	if ((reboot_esm_done == 1) && (esm_err_force_14 == 0) &&
+		(rx_hdcp22_rd(0x60) == 0)) {
+		if ((hdcp22_authenticated == 0xff) &&
+			(hdcp22_capable_sts == 0xff)) {
+			hdmirx_wr_dwc(0x81c,
+				0x2);
+			esm_err_force_14 = 1;
+			rx_print("force 1.4-1\n");
+		}
+	}
+}
+#endif
+
 void hdmirx_hw_monitor(void)
 {
 	int pre_sample_rate;
 	int tmp;
 	unsigned int tmds_clk;
 
+	if ((clk_debug) && (rx.state >= FSM_SIG_UNSTABLE))
+		monitor_cable_clk_sts();
+
 	if (sm_pause)
 		return;
 
-	rx_check_repeat();
 	HPD_controller();
+	rx_check_repeat();
+	#ifdef HDCP22_ENABLE
+	if (hdcp_22_on)
+		monitor_capable_sts();
+	#endif
 	if (rx.current_port_tx_5v_status == 0) {
 		if (rx.state != FSM_INIT) {
 			rx_print("5v_lost->FSM_INIT\n");
 			rx.no_signal = true;
 			pre_port = 0xfe;
-			hdmirx_set_hpd(rx.port, 0);
+			if (scdc_cfg_en)
+				set_scdc_cfg(1, 0);
+			/* hdmirx_set_hpd(rx.port, 0); */
 			hdmirx_audio_enable(0);
 			hdmirx_audio_fifo_rst();
 			rx_aud_pll_ctl(0);
@@ -2237,10 +2579,13 @@ void hdmirx_hw_monitor(void)
 			hdmirx_hw_config();
 			/* hdmi_rx_ctrl_edid_update(); */
 		rx.state = FSM_HDMI5V_LOW;
+		rx.pre_state = FSM_INIT;
 		wait_no_signal_cnt = 0;
 		rx_print("INIT->5V_LOW\n");
 		break;
 	case FSM_HDMI5V_LOW:
+		if (scdc_cfg_en)
+			set_scdc_cfg(1, 1);
 		audio_status_init();
 		Signal_status_init();
 		rx.state = FSM_HDMI5V_HIGH;
@@ -2253,12 +2598,14 @@ void hdmirx_hw_monitor(void)
 		rx.scdc_tmds_cfg = 0;
 		pre_port = rx.port;
 		hdmirx_set_hpd(rx.port, 1);
+		if (scdc_cfg_en)
+			set_scdc_cfg(0, 1);
 		rx.state = FSM_HPD_READY;
 		rx_print("5V_high->HPD_READY\n");
 		break;
 	case FSM_HPD_READY:
 		/*check mhl 3.4gb*/
-		if ((true == rx.scdc_tmds_cfg) ||
+		if (hdmirx_tmds_34g() ||
 			((hdmirx_rd_dwc(DWC_SCDC_REGS0) >> 17) & 1)) {
 			hdmirx_wr_phy(PHY_CDR_CTRL_CNT,
 				hdmirx_rd_phy(PHY_CDR_CTRL_CNT)|(1<<8));
@@ -2266,30 +2613,37 @@ void hdmirx_hw_monitor(void)
 			hdmirx_wr_phy(PHY_CDR_CTRL_CNT,
 				hdmirx_rd_phy(PHY_CDR_CTRL_CNT)&(~(1<<8)));
 		}
-		/*hdmirx_phy_clk_rate_monitor();*/
-		if (eq_calc_mode == 0) {
-			wait_clk_stable = 0;
-			hdmirx_phy_start_eq();
+		if (FSM_SIG_READY != rx.pre_state) {
+			if (eq_calc_mode == 0) {
+				wait_clk_stable = 0;
+				hdmirx_phy_start_eq();
+			}
+			rx.state = FSM_EQ_CALIBRATION;
+			rx_print("HPD_READY->CALIBRATION\n");
+		} else {
+			rx.state = FSM_PHY_RST;
+			rx_print("HPD_READY->PHY_RST\n");
 		}
-		rx.state = FSM_EQ_CALIBRATION;
-		rx_print("HPD_READY->CALIBRATION\n");
+		rx.pre_state = FSM_HPD_READY;
 		break;
 	case FSM_EQ_CALIBRATION:
 		if (eq_calc_mode != 0) {
 			hdmirx_phy_conf_eq_setting(rx.port, eq_calc_mode ,
 				eq_calc_mode , eq_calc_mode);
-			rx.state = FSM_WAIT_CLK_STABLE;
+			rx.state = FSM_SIG_UNSTABLE;
 			rx_print("CALIBRATION->CLK_STABLE\n");
 			return;
 		}
 
 		if (hdmirx_phy_get_eq_state() == EQ_SUCCESS_END) {
-			rx.state = FSM_TIMINGCHANGE;
+			rx.state = FSM_PHY_RST;
+			rx.pre_state = FSM_EQ_CALIBRATION;
 			wait_clk_stable = 0;
 			rx_print("CALIBRATION->TIMINGCHANGE success\n");
 		} else if (hdmirx_phy_get_eq_state() < EQ_SUCCESS_END) {
 			if (wait_clk_stable > wait_clk_stable_max) {
-				rx.state = FSM_TIMINGCHANGE;
+				rx.state = FSM_PHY_RST;
+				rx.pre_state = FSM_EQ_CALIBRATION;
 				wait_clk_stable = 0;
 				hdmirx_phy_stop_eq();
 				rx_print(
@@ -2298,30 +2652,48 @@ void hdmirx_hw_monitor(void)
 			wait_clk_stable++;
 		} else {	/* failed */
 			rx_print("CALIBRATION->TIMINGCHANGE fail\n");
-			rx.state = FSM_TIMINGCHANGE;
+			rx.state = FSM_PHY_RST;
+			rx.pre_state = FSM_EQ_CALIBRATION;
 			hdmirx_phy_stop_eq();
 			wait_clk_stable = 0;
 		}
 		break;
+	case FSM_PHY_RST:
+		if ((reset_sw) && (is_phy_reset)) {
+			if (rx.pre_state == FSM_HPD_READY)
+				hdmirx_phy_reset(rx.port, 1);
+		}
+		rx.state = FSM_SIG_UNSTABLE;
+		rx_print("PHY RST->UNSTABLE\n");
+		break;
+	case FSM_WAIT_HDCP_SWITCH:
+		force_wait_cnt++;
+		if (force_wait_cnt > force_wait_max) {
+			rx.state = rx.pre_state;
+			force_wait_cnt = 0;
+			break;
+		}
+		break;
 	case FSM_WAIT_CLK_STABLE:
 		wait_clk_stable++;
+		if (is_clk_stable()) {
+			rx.state = rx.pre_state;
+			wait_clk_stable = 0;
+			break;
+		}
 		if (wait_clk_stable > clk_stable_max) {
-			rx.state = FSM_TIMINGCHANGE;
-			rx.pre_state = FSM_WAIT_CLK_STABLE;
+			rx.state = FSM_HDMI5V_LOW;
+			hdmirx_set_hpd(rx.port, 0);
 			wait_clk_stable = 0;
 			break;
 		}
 		break;
-	case FSM_TIMINGCHANGE:
-		if ((reset_sw) && (is_phy_reset))
-			hdmirx_phy_reset(rx.port, 0);
-		rx.state = FSM_SIG_UNSTABLE;
-		rx_print("TIMINGCHANGE->UNSTABLE\n");
-		break;
 	case FSM_SIG_UNSTABLE:
 		if (hdmirx_tmds_pll_lock()) {
-			if (sig_pll_lock_cnt++ > sig_pll_lock_max) {
+			sig_pll_lock_cnt++;
+			if (sig_pll_lock_cnt > sig_pll_lock_max) {
 				rx.state = FSM_DWC_RST_WAIT;
+				rx.scdc_tmds_cfg = 0;
 				if (reset_sw)
 					rx_dwc_reset();
 				#ifdef HDCP22_ENABLE
@@ -2332,7 +2704,7 @@ void hdmirx_hw_monitor(void)
 				sig_pll_lock_cnt = 0;
 				rx.no_signal = false;
 				rx_print("UNSTABLE->DWC_RST pll:%d\n",
-					    hdmirx_tmds_pll_lock());
+					    rx.scdc_tmds_cfg);
 			} else {
 			    if (log_flag & VIDEO_LOG)
 					rx_print("SIG_UNSTABLE lock_cnt :%d\n",
@@ -2347,39 +2719,34 @@ void hdmirx_hw_monitor(void)
 			sig_pll_lock_cnt = 0;
 			sig_pll_unlock_cnt++;
 			if (sig_pll_unlock_cnt >= sig_pll_unlock_max) {
-				if (is_clk_stable()) {
-					tmds_clk = hdmirx_get_tmds_clock();
-					hdmirx_error_count_config();
-					/* if (tmds_clk > CLK_RATE_THRESHOLD) */
-					rx.scdc_tmds_cfg =
-							 (rx.scdc_tmds_cfg?0:1);
-					rx.state = FSM_HPD_READY;
-					rx_print("Clk UNSTABLE->HPD_READY:%d\n",
-								rx.no_signal);
+				tmds_clk = hdmirx_get_tmds_clock();
+				hdmirx_error_count_config();
+				rx.scdc_tmds_cfg++;
+					/* = (rx.scdc_tmds_cfg?0:1); */
+				if (hdmirx_tmds_34g_max()) {
+					rx.scdc_tmds_cfg = 0;
+					hdmirx_set_hpd(rx.port, 0);
+					rx.state = FSM_HDMI5V_LOW;
 					sig_pll_unlock_cnt = 0;
-				} else {
-					hdmirx_error_count_config();
-					/*
-					if (is_ddc_state_error()) {
-						hdmirx_wr_top(TOP_SW_RESET,
-							0x2);
-						mdelay(1);
-						hdmirx_wr_top(TOP_SW_RESET,
-							0x0);
-						hdmirx_set_hpd(rx.port, 0);
-					}
-					*/
-					rx.state = FSM_HPD_READY;
-					rx_print("noclk->HPD_READY:%d\n",
-							rx.no_signal);
-					sig_pll_unlock_cnt = 0;
+					break;
 				}
+				rx.state = FSM_HPD_READY;
+				rx_print("UNSTABLE->HPD_READY 3g:%d\n",
+						rx.scdc_tmds_cfg);
+				sig_pll_unlock_cnt = 0;
+
 			}
 		}
 		break;
 	case FSM_DWC_RST_WAIT:
-		if (dwc_rst_wait_cnt++ < dwc_rst_wait_cnt_max)
+		dwc_rst_wait_cnt++;
+		if ((do_hpd_reset_flag) &&
+			(dwc_rst_wait_cnt < wait_hpd_reset_max))
 			break;
+		if ((!do_hpd_reset_flag) &&
+			(dwc_rst_wait_cnt < dwc_rst_wait_cnt_max))
+			break;
+		do_hpd_reset_flag = 0;
 		dwc_rst_wait_cnt = 0;
 		rx.state = FSM_SIG_STABLE;
 		rx_print("DWC_RST->STABLE\n");
@@ -2393,6 +2760,16 @@ void hdmirx_hw_monitor(void)
 		if (is_timing_stable(&rx.pre_params,
 			&rx.cur_params) || (force_ready)) {
 			if (sig_stable_cnt++ > sig_stable_max) {
+				#ifdef HDCP22_ENABLE
+				if (hdcp_22_on && enable_esm_reboot) {
+					hdmirx_esm_hw_fault_detect();
+					if ((esm_err_force_14 == 1) ||
+						((rx_hdcp22_rd(0x60)&1) == 1))
+						;
+					else
+						break;
+				}
+				#endif
 				get_timing_fmt(&rx.pre_params);
 				if ((rx.pre_params.sw_vic == HDMI_UNSUPPORT) ||
 					(rx.pre_params.sw_vic == HDMI_UNKNOW)) {
@@ -2459,6 +2836,8 @@ void hdmirx_hw_monitor(void)
 				hdmirx_wr_top(TOP_SW_RESET,
 							0x0);
 				hdmirx_set_hpd(rx.port, 0);
+				if (scdc_cfg_en)
+					set_scdc_cfg(1, 1);
 				ddc_state_err_cnt = 0;
 				rx.state = FSM_HDMI5V_LOW;
 				rx_print("DDC ERROR->HPD_LOW\n");
@@ -2467,6 +2846,10 @@ void hdmirx_hw_monitor(void)
 	    } else {
 			ddc_state_err_cnt = 0;
 			rx.state = FSM_SIG_READY;
+			#ifdef HDCP22_ENABLE
+				if (hdcp_22_on)
+					video_stable_to_esm = 1;
+			#endif
 			pll_stable_protect_cnt = pll_stable_protect_max;
 			stable_protect_cnt = stable_protect_max;
 			rx_print("DDCERROR->READY\n");
@@ -2478,11 +2861,15 @@ void hdmirx_hw_monitor(void)
 			stable_protect_cnt--;
 		if (pll_stable_protect_cnt != 0)
 			pll_stable_protect_cnt--;
+
 		if (hdmirx_tmds_pll_lock() == false) {
+			rx.change = 1;
 			if ((sig_lost_lock_cnt++ >= sig_lost_lock_max) &&
 				(pll_stable_protect_cnt == 0)) {
-				rx.state = FSM_HDMI5V_HIGH;
+				rx.state = FSM_HPD_READY;
+				rx.pre_state = FSM_SIG_READY;
 				audio_sample_rate = 0;
+
 				hdmirx_set_video_mute(1);
 				rx_aud_pll_ctl(0);
 				hdmirx_audio_enable(0);
@@ -2507,6 +2894,8 @@ void hdmirx_hw_monitor(void)
 				rx_print("sig_lost_lock_cnt = %d",
 							 sig_lost_lock_cnt);
 		    sig_lost_lock_cnt = 0;
+			if (pll_stable_protect_cnt == 0)
+				rx.change = 0;
 		}
 
 	    hdmirx_get_video_info(&rx.ctrl, &rx.cur_params);
@@ -2514,23 +2903,27 @@ void hdmirx_hw_monitor(void)
 		yuv_quant_range = rx.cur_params.yuv_quant_range;
 		it_content = rx.cur_params.it_content;
 	    /* video info change */
-	    if (((!is_timing_stable(&rx.pre_params,
+	    if ((!is_timing_stable(&rx.pre_params,
 			&rx.cur_params)) ||
 			(is_frame_rate_change(&rx.pre_params,
 				&rx.cur_params)) ||
 			(is_packetinfo_change(&rx.pre_params,
-				&rx.cur_params))) &&
-				(stable_protect_cnt == 0)) {
+				&rx.cur_params))) {
+			rx.change = 1;
+			if (stable_protect_cnt != 0)
+				break;
 			if (++sig_unready_cnt >= sig_unready_max) {
 				/*sig_lost_lock_cnt = 0;*/
 				sig_unready_cnt = 0;
 				audio_sample_rate = 0;
 				unstable_protect_cnt = 0;
+				rx.change = 1;
 				hdmirx_set_video_mute(1);
 				rx_aud_pll_ctl(0);
 				hdmirx_audio_enable(0);
 				/* hdmirx_audio_fifo_rst(); */
-				rx.state = FSM_HDMI5V_HIGH;
+				rx.state = FSM_HPD_READY;
+				rx.pre_state = FSM_SIG_READY;
 				wait_no_signal_cnt = 0;
 				rx.aud_sr_stable_cnt = 0;
 				#ifdef HDCP22_ENABLE
@@ -2545,18 +2938,17 @@ void hdmirx_hw_monitor(void)
 					sizeof(struct vendor_specific_info_s));
 				rx_print("READY->HPD_READY\n");
 				break;
-			} else {
-				unstable_protect_cnt = unstable_protect_max;
 			}
 	    } else {
-			if ((sig_unready_cnt != 0) && (log_flag & VIDEO_LOG)) {
-				rx_print("sig_unready_cnt=%d",
-					sig_unready_cnt);
-			}
-			if (unstable_protect_cnt != 0)
-				unstable_protect_cnt--;
-			else
+			if (sig_unready_cnt != 0) {
+				if (log_flag & VIDEO_LOG)
+					rx_print("sig_unready_cnt=%d",
+						sig_unready_cnt);
 				sig_unready_cnt = 0;
+			}
+
+			if (stable_protect_cnt == 0)
+				rx.change = 0;
 
 			if (irq_video_mute_flag) {
 				irq_video_mute_flag = false;
@@ -2619,6 +3011,8 @@ void hdmirx_hw_monitor(void)
 					rx.aud_info.coding_type;
 				audio_channel_count =
 					rx.aud_info.channel_count;
+				auds_rcv_sts =
+					rx.aud_info.aud_packet_received;
 
 				if (hdmirx_get_audio_clock() < 100000) {
 					rx_print("update audio\n");
@@ -2630,8 +3024,7 @@ void hdmirx_hw_monitor(void)
 		} else {
 
 		}
-		auds_rcv_sts =
-			rx.aud_info.audio_samples_packet_received;
+
 		break;
 	default:
 		break;
@@ -2642,6 +3035,44 @@ void hdmirx_hw_monitor(void)
 		if ((force_state & 0x20) == 0)
 			force_state = 0;
 	}
+}
+
+int rx_get_edid_index(void)
+{
+	if ((edid_mode == 0) &&
+		edid_size > 4 &&
+		edid_buf[0] == 'E' &&
+		edid_buf[1] == 'D' &&
+		edid_buf[2] == 'I' &&
+		edid_buf[3] == 'D') {
+		rx_print("edid: use Top edid\n");
+		return EDID_LIST_BUFF;
+	} else {
+		if (edid_mode == 0)
+			return EDID_LIST_AML;
+		else if (edid_mode < EDID_LIST_NUM)
+			return edid_mode;
+		else
+			return EDID_LIST_AML;
+	}
+}
+
+unsigned char *rx_get_edid_buffer(int index)
+{
+	if (index == EDID_LIST_BUFF)
+		return edid_list[index] + 4;
+	else
+		return edid_list[index];
+}
+
+int rx_get_edid_size(int index)
+{
+	if (index == EDID_LIST_BUFF) {
+		if (edid_size > EDID_SIZE + 4)
+			edid_size = EDID_SIZE + 4;
+		return edid_size - 4;
+	} else
+		return EDID_SIZE;
 }
 
 int rx_set_receiver_edid(unsigned char *data, int len)
@@ -2666,7 +3097,7 @@ int rx_set_hdr_lumi(unsigned char *data, int len)
 }
 EXPORT_SYMBOL(rx_set_hdr_lumi);
 
-void rx_poll_dwc(uint16_t addr, uint32_t exp_data,
+bool rx_poll_dwc(uint16_t addr, uint32_t exp_data,
 			uint32_t mask, uint32_t max_try)
 {
 	uint32_t rd_data;
@@ -2675,25 +3106,31 @@ void rx_poll_dwc(uint16_t addr, uint32_t exp_data,
 
 	rd_data = hdmirx_rd_dwc(addr);
 	while (((cnt < max_try) || (max_try == 0)) && (done != 1)) {
-		if ((rd_data | mask) == (exp_data | mask)) {
+		if ((rd_data & mask) == (exp_data & mask)) {
 			done = 1;
 		} else {
 			cnt++;
 			rd_data = hdmirx_rd_dwc(addr);
 		}
 	}
+	rx_print("poll dwc cnt :%d\n", cnt);
 	if (done == 0) {
 		/* if(log_flag & ERR_LOG) */
 		rx_print("poll dwc%x time-out!\n", addr);
+		return false;
 	}
+	return true;
 }
 
-bool rx_set_repeat_aksv(unsigned char *data, int len, int depth)
+bool rx_set_repeat_aksv(unsigned char *data, int len, int depth,
+	bool dev_exceed, bool cascade_exceed)
 {
-	int i, j;
-	rx_print("set ksv list len:%d,depth:%d\n", len, depth);
+	int i;
+	/*rx_print("set ksv list len:%d,depth:%d\n", len, depth);*/
+	if ((len == 0) || (data == 0) || (depth == 0))
+		return false;
 	/*set repeat depth*/
-	if (depth <= MAX_REPEAT_DEPTH) {
+	if ((depth <= MAX_REPEAT_DEPTH) && (!cascade_exceed)) {
 		hdmirx_wr_bits_dwc(DWC_HDCP_RPT_BSTATUS, MAX_CASCADE_EXCEEDED,
 		0);
 		hdmirx_wr_bits_dwc(DWC_HDCP_RPT_BSTATUS, DEPTH, depth);
@@ -2703,10 +3140,10 @@ bool rx_set_repeat_aksv(unsigned char *data, int len, int depth)
 		1);
 	}
 	/*set repeat count*/
-	if (len <= MAX_KSV_LIST_SIZE) {
+	if ((len <= MAX_REPEAT_COUNT) && (!dev_exceed)) {
 		hdmirx_wr_bits_dwc(DWC_HDCP_RPT_BSTATUS, MAX_DEVS_EXCEEDED,
 		0);
-		rx.hdcp.count = len/MAX_KSV_SIZE;
+		rx.hdcp.count = len;
 		hdmirx_wr_bits_dwc(DWC_HDCP_RPT_BSTATUS, DEVICE_COUNT,
 								rx.hdcp.count);
 	} else {
@@ -2723,48 +3160,51 @@ bool rx_set_repeat_aksv(unsigned char *data, int len, int depth)
 	}
 	/*write ksv list to fifo*/
 	for (i = 0; i < rx.hdcp.count; i++) {
-		for (j = 0; j < 3000; j++) {
+		if (rx_poll_dwc(DWC_HDCP_RPT_CTRL, ~KSV_HOLD, KSV_HOLD,
+		KSV_LIST_WR_TH)) {
 			/*check fifo can be written*/
-			if (!hdmirx_rd_bits_dwc(DWC_HDCP_RPT_CTRL, KSV_HOLD)) {
-				hdmirx_wr_dwc(DWC_HDCP_RPT_KSVFIFOCTRL, i);
-				hdmirx_wr_dwc(DWC_HDCP_RPT_KSVFIFO1,
-					*(data + i*MAX_KSV_SIZE + 4));
-				hdmirx_wr_dwc(DWC_HDCP_RPT_KSVFIFO0,
-					*((uint32_t *)(data + i*MAX_KSV_SIZE)));
-				rx_print(
-				"set ksv list index:%d, ksv hi:%#x, low:%#x\n",
-					i, *(data + i*MAX_KSV_SIZE +
-				4), *((uint32_t *)(data + i*MAX_KSV_SIZE)));
-				break;
-			}
-		}
-		if (j >= 3000)
+			hdmirx_wr_dwc(DWC_HDCP_RPT_KSVFIFOCTRL, i);
+			hdmirx_wr_dwc(DWC_HDCP_RPT_KSVFIFO1,
+				*(data + i*MAX_KSV_SIZE + 4));
+			hdmirx_wr_dwc(DWC_HDCP_RPT_KSVFIFO0,
+				*((uint32_t *)(data + i*MAX_KSV_SIZE)));
+			rx_print(
+			"[RX]write ksv list index:%d, ksv hi:%#x, low:%#x\n",
+				i, *(data + i*MAX_KSV_SIZE +
+			4), *((uint32_t *)(data + i*MAX_KSV_SIZE)));
+		} else {
 			return false;
+		}
 	}
 	/* Wait for ksv_hold=0*/
-	rx_poll_dwc(DWC_HDCP_RPT_CTRL, (0<<6), ~(1<<6), 10000);
+	rx_poll_dwc(DWC_HDCP_RPT_CTRL, ~KSV_HOLD, KSV_HOLD, KSV_LIST_WR_TH);
 	/*set ksv list ready*/
 	hdmirx_wr_bits_dwc(DWC_HDCP_RPT_CTRL, KSVLIST_READY,
 					(rx.hdcp.count > 0));
 	/* Wait for HW completion of V value*/
-	rx_poll_dwc(DWC_HDCP_RPT_CTRL, (1<<4), ~(1<<4), 40000);
+	rx_poll_dwc(DWC_HDCP_RPT_CTRL, FIFO_READY, FIFO_READY, KSV_V_WR_TH);
+	rx_print("[RX]write Ready signal!\n");
 
 	return true;
 }
 
-void rx_clear_repeat(void)
+void rx_set_repeat_signal(bool repeat)
 {
-	rx.hdcp.repeat = 0;
-	hdmirx_wr_bits_dwc(DWC_HDCP_RPT_CTRL, REPEATER, rx.hdcp.repeat);
+	rx.hdcp.repeat = repeat;
+	hdmirx_wr_bits_dwc(DWC_HDCP_RPT_CTRL, REPEATER, repeat);
 }
 
-bool rx_set_receive_hdcp(unsigned char *data, int len, int depth)
+bool rx_set_receive_hdcp(unsigned char *data, int len, int depth,
+	bool cas_exceed, bool devs_exceed)
 {
 	if ((data != 0) && (len != 0) && (len <= MAX_REPEAT_COUNT))
-		memcpy(receive_hdcp, data, len);
+		memcpy(receive_hdcp, data, len*MAX_KSV_SIZE);
+	rx_print("receive ksv list len:%d,depth:%d,cas:%d,dev:%d\n", len,
+	depth, cas_exceed, devs_exceed);
 	hdcp_len = len;
 	hdcp_repeat_depth = depth;
-	new_hdcp = true;
+	rx.hdcp.cascade_exceed = cas_exceed;
+	rx.hdcp.dev_exceed = devs_exceed;
 
 	return true;
 }
@@ -2784,52 +3224,108 @@ EXPORT_SYMBOL(rx_repeat_hdcp_ver);
 
 void rx_edid_physical_addr(int a, int b, int c, int d)
 {
-
+	up_phy_addr = ((d & 0xf) << 12)  | ((c & 0xf) << 8) | ((b &
+	0xf) << 4) | (a & 0xf);
 }
 EXPORT_SYMBOL(rx_edid_physical_addr);
 
+void rx_send_hpd_pulse(void)
+{
+	hdmirx_set_hpd(rx.port, 0);
+	rx.state = FSM_HDMI5V_HIGH;
+}
+
+void rx_start_repeater_auth(void)
+{
+	rx.hdcp.state = REPEATER_STATE_START;
+	rx.hdcp.delay = 0;
+	/*hdcp_len = 0;*/
+	/*hdcp_repeat_depth = 0;*/
+	rx.hdcp.dev_exceed = 0;
+	rx.hdcp.cascade_exceed = 0;
+}
+
 void rx_check_repeat(void)
 {
-	unsigned char hdr_edid[EDID_HDR_SIZE];
-
 	if (!hdmirx_repeat_support())
 		return;
 
-	if (new_edid) {
-		if (repeat_plug)
-			hdmirx_wr_bits_dwc(DWC_HDCP_RPT_CTRL, REPEATER, 1);
-		/*check receive change*/
-		rx_modify_edid(edid_list[edid_mode&0xf],
-		       EDID_SIZE,
-		       receive_edid);
-		hdmi_rx_load_edid_data(edid_temp);
-		rx_print("repeat ready pulse hpd\n");
-		new_edid = false;
-		hdmirx_set_hpd(rx.port, 0);
+	if (rx.hdcp.repeat != repeat_plug) {
+		rx_set_repeat_signal(repeat_plug);
+		if (!repeat_plug) {
+			hdcp_len = 0;
+			hdcp_repeat_depth = 0;
+			rx.hdcp.dev_exceed = 0;
+			rx.hdcp.cascade_exceed = 0;
+			memset(&receive_hdcp, 0 , sizeof(receive_hdcp));
+			new_edid = true;
+			memset(&receive_edid, 0 , sizeof(receive_edid));
+			rx_send_hpd_pulse();
+		}
 	}
-	if (new_hdcp) {
-		if (repeat_plug) {
-			if (!hdmirx_rd_bits_dwc(DWC_HDCP_RPT_CTRL, WAITING_KSV))
-				return;
-			rx_set_repeat_aksv(receive_hdcp, hdcp_len,
-				       hdcp_repeat_depth);
-		} else
-		       rx_clear_repeat();
-		new_hdcp = false;
+	if (new_edid) {
+		/*check downstream plug when new plug occur*/
+		/*check receive change*/
+		hdmi_rx_ctrl_edid_update();
+		new_edid = false;
+		rx_send_hpd_pulse();
+	}
+	if (repeat_plug) {
+		switch (rx.hdcp.state) {
+		case REPEATER_STATE_START:
+			rx_print("[RX] receive aksv\n");
+			hdmirx_wr_bits_dwc(DWC_HDCP_RPT_CTRL,
+						KSVLIST_TIMEOUT, 0);
+			hdmirx_wr_bits_dwc(DWC_HDCP_RPT_CTRL,
+						KSVLIST_LOSTAUTH, 0);
+			hdmirx_wr_bits_dwc(DWC_HDCP_RPT_CTRL,
+						KSVLIST_READY, 0);
+			rx.hdcp.state = REPEATER_STATE_WAIT_KSV;
+		break;
+
+		case REPEATER_STATE_WAIT_KSV:
+		if (!rx.current_port_tx_5v_status) {
+			rx.hdcp.state = REPEATER_STATE_IDLE;
+			break;
+		}
+		if (hdmirx_rd_bits_dwc(DWC_HDCP_RPT_CTRL, WAITING_KSV)) {
+			rx.hdcp.delay++;
+			if (rx.hdcp.delay == 1)
+				rx_print("[RX] receive ksv wait signal\n");
+			if (rx.hdcp.delay < KSV_LIST_WR_MAX) {
+				break;
+			} else if (rx.hdcp.delay >= KSV_LIST_WAIT_DELAY) {
+				hdmirx_wr_bits_dwc(DWC_HDCP_RPT_CTRL,
+						KSVLIST_TIMEOUT, 1);
+				rx.hdcp.state = REPEATER_STATE_IDLE;
+				rx_print("[RX] receive ksv wait timeout\n");
+			}
+			if (rx_set_repeat_aksv(receive_hdcp, hdcp_len,
+				hdcp_repeat_depth, rx.hdcp.dev_exceed,
+				rx.hdcp.cascade_exceed)) {
+				rx.hdcp.state = REPEATER_STATE_IDLE;
+			}
+		}
+		/*if support hdcp2.2 jump to wait_ack else to idle*/
+		break;
+
+		case REPEATER_STATE_WAIT_ACK:
+		/*if receive ack jump to idle else send auth_req*/
+		break;
+
+		case REPEATER_STATE_IDLE:
+
+		break;
+
+		default:
+		break;
+		}
 	}
 	/*hdr change from app*/
 	if (new_hdr_lum) {
-		hdr_edid[0] = ((EDID_TAG_HDR >> 3)&0x7) +
-					       (6 & 0x1f);
-	       hdr_edid[1] = EDID_TAG_HDR & 0xFF;
-	       memcpy(hdr_edid + 4, receive_hdr_lum,
-			       sizeof(unsigned char)*3);
-	       rx_modify_edid(edid_list[edid_mode&0xf],
-		       EDID_SIZE,
-		       hdr_edid);
-	       new_hdr_lum = false;
-	       hdmi_rx_load_edid_data(edid_temp);
-	       hdmirx_set_hpd(rx.port, 0);
+		hdmi_rx_ctrl_edid_update();
+		new_hdr_lum = false;
+		rx_send_hpd_pulse();
 	}
 
 }
@@ -3011,39 +3507,53 @@ void rx_modify_edid(unsigned char *buffer,
 			start_addr, cur_size, addition_size);
 
 		/*set the block value to edid_temp*/
-		start_addr_temp = rx_get_ceadata_offset(edid_temp, addition);
-		temp_len = ((edid_temp[start_addr_temp] & 0x1f) + 1);
+		start_addr_temp = rx_get_ceadata_offset(buffer, addition);
+		temp_len = ((buffer[start_addr_temp] & 0x1f) + 1);
 		rx_print("edid_temp start: %#x, len: %d\n", start_addr_temp,
 							temp_len);
 		/*move data behind current data if need*/
 		if (temp_len < addition_size) {
 			for (i = 0; i < EDID_SIZE - start_addr_temp -
 				addition_size; i++) {
-				edid_temp[255 - i] =
-				edid_temp[255 - (addition_size - temp_len)
+				buffer[255 - i] =
+				buffer[255 - (addition_size - temp_len)
 						 - i];
 			}
 		} else if (temp_len > addition_size) {
 			for (i = 0; i < EDID_SIZE - start_addr_temp -
 						temp_len; i++) {
-				edid_temp[start_addr_temp + i + addition_size]
-				 = edid_temp[start_addr_temp + i + temp_len];
+				buffer[start_addr_temp + i + addition_size]
+				 = buffer[start_addr_temp + i + temp_len];
 			}
 		}
 		/*check detail description offset if needs modify*/
-		if (edid_temp[EDID_BLOCK1_OFFSET + EDID_DESCRIP_OFFSET] +
+		if (buffer[EDID_BLOCK1_OFFSET + EDID_DESCRIP_OFFSET] +
 				EDID_BLOCK1_OFFSET > start_addr_temp)
-			edid_temp[EDID_BLOCK1_OFFSET + EDID_DESCRIP_OFFSET]
+			buffer[EDID_BLOCK1_OFFSET + EDID_DESCRIP_OFFSET]
 				+= (addition_size - temp_len);
 		/*copy current edid data*/
-		memcpy(edid_temp + start_addr_temp, cur_data,
+		memcpy(buffer + start_addr_temp, cur_data,
 						addition_size);
 		if (cur_data != 0)
 			kfree(cur_data);
 	}
 }
 
-void hdmi_rx_load_edid_data(unsigned char *buffer)
+unsigned int rx_exchange_bits(unsigned int value)
+{
+	unsigned int temp;
+	rx_print("bfe:%#x\n", value);
+	temp = value & 0xF;
+	value = (((value >> 4) & 0xF) | (value & 0xFFF0));
+	value = ((value & 0xFF0F) | (temp << 4));
+	temp = value & 0xF00;
+	value = (((value >> 4) & 0xF00) | (value & 0xF0FF));
+	value = ((value & 0x0FFF) | (temp << 4));
+	rx_print("aft:%#x\n", value);
+	return value;
+}
+
+void hdmi_rx_load_edid_data(unsigned char *buffer, int port)
 {
 	unsigned char value = 0;
 	unsigned char check_sum = 0;
@@ -3078,13 +3588,13 @@ void hdmi_rx_load_edid_data(unsigned char *buffer)
 	}
 
 	for (i = 0; i < 3; i++) {
-		if (((real_port_map >> i*4) & 0xf) == 0) {
+		if (((port >> i*4) & 0xf) == 0) {
 			phy_addr[i] = 0x10;
 			checksum[i] = value;
-		} else if (((real_port_map >> i*4) & 0xf) == 1) {
+		} else if (((port >> i*4) & 0xf) == 1) {
 			phy_addr[i] = 0x20;
 			checksum[i] = (0x100 + value - 0x10) & 0xff;
-		} else if (((real_port_map >> i*4) & 0xf) == 2) {
+		} else if (((port >> i*4) & 0xf) == 2) {
 			phy_addr[i] = 0x30;
 			checksum[i] = (0x100 + value - 0x20) & 0xff;
 		}
@@ -3102,44 +3612,121 @@ void hdmi_rx_load_edid_data(unsigned char *buffer)
 }
 
 
+void hdmi_rx_load_edid_data_repeater(unsigned char *buffer, int port)
+{
+	unsigned char value = 0;
+	unsigned char check_sum = 0;
+	unsigned char phy_addr_offset = 0;
+	int i, ram_addr;
+	unsigned int phy_addr[3];
+	unsigned char checksum[3];
+	unsigned char root_offset = 0;
+
+	for (i = 0; i <= 255; i++) {
+		value = buffer[i];
+
+		/*find phy_addr_offset*/
+		if (value == 0x03) {
+			if ((0x0c == buffer[i+1]) &&
+				(0x00 == buffer[i+2]) &&
+				(0x00 == buffer[i+4])) {
+				buffer[i+3] = 0x00;
+				phy_addr_offset = i+3;
+			}
+		}
+		if ((i >= 128) && (i < 255)) {
+			check_sum += value;
+			check_sum &= 0xff;
+		}
+		if (i == 255) {
+			value = (0x100-check_sum)&0xff;
+			check_sum = 0;
+		}
+		ram_addr = TOP_EDID_OFFSET + i;
+		hdmirx_wr_top(ram_addr, value);
+		hdmirx_wr_top(0x100+ram_addr, value);
+	}
+	/*get the root index*/
+	i = 0;
+	while (i < 4) {
+		if (((up_phy_addr << (i*4)) & 0xf000) != 0) {
+			root_offset = i;
+			break;
+		} else
+			i++;
+	}
+	if (i == 4)
+		root_offset = 4;
+
+	for (i = 0; i < 3; i++) {
+		if (((port >> i*4) & 0xf) == 0) {
+			if (root_offset == 0)
+				phy_addr[i] = 0xFFFF;
+			else
+				phy_addr[i] = (up_phy_addr | (0x1000 >>
+				(root_offset - 1)*4));
+			phy_addr[i] = rx_exchange_bits(phy_addr[i]);
+			checksum[i] = (0x100 + value - (phy_addr[i] & 0xFF) -
+				((phy_addr[i] >> 8) & 0xFF)) & 0xff;
+		} else if (((port >> i*4) & 0xf) == 1) {
+			if (root_offset == 0)
+				phy_addr[i] = 0xFFFF;
+			else
+				phy_addr[i] = (up_phy_addr | (0x2000 >>
+				(root_offset - 1)*4));
+			phy_addr[i] = rx_exchange_bits(phy_addr[i]);
+			checksum[i] = (0x100 + value - (phy_addr[i] & 0xFF) -
+				((phy_addr[i] >> 8) & 0xFF));
+		} else if (((port >> i*4) & 0xf) == 2) {
+			if (root_offset == 0)
+				phy_addr[i] = 0xFFFF;
+			else
+				phy_addr[i] = (up_phy_addr | (0x3000 >>
+				(root_offset - 1)*4));
+			phy_addr[i] = rx_exchange_bits(phy_addr[i]);
+			checksum[i] = (0x100 + value - (phy_addr[i] & 0xFF) -
+				((phy_addr[i] >> 8) & 0xFF));
+		}
+	}
+
+	hdmirx_wr_top(TOP_EDID_RAM_OVR2,
+		(phy_addr_offset + 1) | (0x0f<<16));
+	hdmirx_wr_top(TOP_EDID_RAM_OVR2_DATA,
+		((phy_addr[0] >> 8) & 0xFF) | (((phy_addr[1] >> 8) & 0xFF)<<8)
+			| (((phy_addr[2] >> 8) & 0xFF)<<16));
+
+	hdmirx_wr_top(TOP_EDID_RAM_OVR1,
+		phy_addr_offset | (0x0f<<16));
+	hdmirx_wr_top(TOP_EDID_RAM_OVR1_DATA,
+		(phy_addr[0] & 0xFF) | ((phy_addr[1] & 0xFF)<<8) |
+			((phy_addr[2] & 0xFF)<<16));
+
+	hdmirx_wr_top(TOP_EDID_RAM_OVR0,
+		0xff | (0x0f<<16));
+	hdmirx_wr_top(TOP_EDID_RAM_OVR0_DATA,
+			checksum[0]|checksum[1]<<8|checksum[2]<<16);
+
+}
+
 int hdmi_rx_ctrl_edid_update(void)
 {
 	unsigned char hdr_edid[EDID_HDR_SIZE];
+	int edid_index = rx_get_edid_index();
 
-	if ((edid_mode == 0) &&
-		edid_size > 4 &&
-		edid_buf[0] == 'E' &&
-		edid_buf[1] == 'D' &&
-		edid_buf[2] == 'I' &&
-		edid_buf[3] == 'D') {
-		rx_print("edid: use Top edid\n");
-
-		if (edid_size > EDID_SIZE + 4)
-			edid_size = EDID_SIZE + 4;
-		memcpy(edid_temp, edid_list[edid_mode&0xf] + 4, edid_size - 4);
-		if (hdmirx_repeat_support()) {
-			hdr_edid[0] = ((EDID_TAG_HDR >> 3)&0xE0) + (6 & 0x1f);
-			hdr_edid[1] = EDID_TAG_HDR & 0xFF;
-			memcpy(hdr_edid + 4, receive_hdr_lum,
-						sizeof(unsigned char)*3);
-			rx_modify_edid(edid_temp, edid_size - 4, receive_edid);
-			rx_modify_edid(edid_temp, edid_size - 4, hdr_edid);
-		}
-	} else if ((edid_mode > 0) && (edid_mode < EDID_LIST_NUM)) {
-		memcpy(edid_temp, edid_list[edid_mode&0xf], EDID_SIZE);
-		if (hdmirx_repeat_support()) {
-			hdr_edid[0] = ((EDID_TAG_HDR >> 3)&0xE0) + (6 & 0x1f);
-			hdr_edid[1] = EDID_TAG_HDR & 0xFF;
-			memcpy(hdr_edid + 4, receive_hdr_lum,
-						sizeof(unsigned char)*3);
-			rx_modify_edid(edid_temp, EDID_SIZE, receive_edid);
-			rx_modify_edid(edid_temp, EDID_SIZE, hdr_edid);
-		}
-	} else {
-		return false;
-	}
-
-	hdmi_rx_load_edid_data(edid_temp);
+	memcpy(edid_temp, rx_get_edid_buffer(edid_index),
+				rx_get_edid_size(edid_index));
+	if (hdmirx_repeat_support()) {
+		hdr_edid[0] = ((EDID_TAG_HDR >> 3)&0xE0) + (6 & 0x1f);
+		hdr_edid[1] = EDID_TAG_HDR & 0xFF;
+		memcpy(hdr_edid + 4, receive_hdr_lum,
+					sizeof(unsigned char)*3);
+		rx_modify_edid(edid_temp, rx_get_edid_size(edid_index),
+							receive_edid);
+		rx_modify_edid(edid_temp, rx_get_edid_size(edid_index),
+							hdr_edid);
+		hdmi_rx_load_edid_data_repeater(edid_temp, real_port_map);
+	} else
+		hdmi_rx_load_edid_data(edid_temp, real_port_map);
 	return true;
 }
 
@@ -3280,6 +3867,7 @@ static void dump_state(unsigned char enable)
 	rx_print("rx.no_signal=%d,rx.state=%d,",
 			rx.no_signal,
 			rx.state);
+	rx_print("skip frame=%d\n", rx.change);
 	rx_print("fmt=0x%x,sw_vic:%d,",
 			hdmirx_hw_get_fmt(),
 			rx.pre_params.sw_vic);
@@ -3474,8 +4062,8 @@ void dump_hdr_reg(void)
 
 void timer_state(void)
 {
-	rx_print("timer state:");
-
+	rx_print("timer state:%d\n",
+		rx.state);
 }
 
 int hdmirx_debug(const char *buf, int size)
@@ -3534,6 +4122,24 @@ int hdmirx_debug(const char *buf, int size)
 		}
 	} else if (strncmp(tmpbuf, "state", 5) == 0) {
 		dump_state(0xff);
+	} else if (strncmp(tmpbuf, "hdcp14", 6) == 0) {
+		hdmirx_set_hpd(rx.port, 0);
+		force_hdcp14_en = 1;
+		hdcp_22_on = 0;
+		hdmirx_wr_dwc(DWC_HDCP22_CONTROL, 0x2);
+		video_stable_to_esm = 0;
+		rx.state = FSM_HDMI5V_HIGH;
+		rx.pre_state = FSM_HDMI5V_HIGH;
+		rx_print("force hdcp1.4\n");
+	} else if (strncmp(tmpbuf, "hdcpauto", 8) == 0) {
+		hdmirx_set_hpd(rx.port, 0);
+		hdcp_22_on = 1;
+		force_hdcp14_en = 0;
+		hdmirx_hw_config();
+		hpd_to_esm = 1;
+		rx.state = FSM_HDMI5V_HIGH;
+		rx.pre_state = FSM_HDMI5V_HIGH;
+		rx_print("hdcp22 auto\n");
 	} else if (strncmp(tmpbuf, "pause", 5) == 0) {
 		if (kstrtol(tmpbuf + 5, 10, &value) < 0)
 			return -EINVAL;
@@ -3567,7 +4173,7 @@ int hdmirx_debug(const char *buf, int size)
 		memcpy(&rx.hdcp, &init_hdcp_data,
 		       sizeof(struct hdmi_rx_ctrl_hdcp));
 		hdmirx_hw_config();
-		pre_port = 0xff;
+		pre_port = 0xfe;
 	} else if (strncmp(tmpbuf, "timer_state", 11) == 0) {
 		timer_state();
 	} else if (strncmp(tmpbuf, "load22key", 9) == 0) {
@@ -3578,8 +4184,9 @@ int hdmirx_debug(const char *buf, int size)
 			if (ret == 1) {
 				if ((hdmirx_rd_dwc(0xf68) & _BIT(3)) == 0) {
 					rx_print("load-1\n");
-					hdcp_22_on = 1;
 					sm_pause = 1;
+					hdmirx_set_hpd(rx.port, 0);
+					hdcp_22_on = 1;
 					hdcp22_kill_esm = 1;
 					mdelay(wait_hdcp22_cnt1);
 					hdcp22_kill_esm = 0;
@@ -3594,14 +4201,16 @@ int hdmirx_debug(const char *buf, int size)
 					hdcp22_wr_top(TOP_SKP_CNTL_STAT, 0x1);
 					hdmirx_hw_config();
 					hpd_to_esm = 1;
-					hdmirx_set_hpd(rx.port, 0);
 					mdelay(wait_hdcp22_cnt);
-					rx.state = FSM_HDMI5V_HIGH;
+					hdmirx_set_hpd(rx.port, 1);
+					/* rx.state = FSM_HDMI5V_HIGH; */
+					/* pre_port = 0xee; */
 					sm_pause = 0;
 				} else {
 					rx_print("load-2\n");
-					hdcp_22_on = 1;
 					sm_pause = 1;
+					hdmirx_set_hpd(rx.port, 0);
+					hdcp_22_on = 1;
 					hdcp22_kill_esm = 1;
 					mdelay(wait_hdcp22_cnt1);
 					hdcp22_kill_esm = 0;
@@ -3616,9 +4225,8 @@ int hdmirx_debug(const char *buf, int size)
 					hdcp22_wr_top(TOP_SKP_CNTL_STAT, 0x1);
 					hdmirx_hw_config();
 					hpd_to_esm = 1;
-					hdmirx_set_hpd(rx.port, 0);
 					mdelay(wait_hdcp22_cnt3);
-					rx.state = FSM_HDMI5V_HIGH;
+					hdmirx_set_hpd(rx.port, 1);
 					sm_pause = 0;
 				}
 			} else
@@ -3758,8 +4366,10 @@ void hdmirx_hw_init(enum tvin_port_e port)
 		0,
 		sizeof(struct hdmi_rx_ctrl_video));
 
-	memcpy(&rx.hdcp, &init_hdcp_data,
-			sizeof(struct hdmi_rx_ctrl_hdcp));
+	memcpy(rx.hdcp.bksv, init_hdcp_data.bksv,
+		sizeof(init_hdcp_data.bksv));
+	memcpy(rx.hdcp.keys, init_hdcp_data.keys,
+		sizeof(init_hdcp_data.keys));
 
 	memset(&rx.vendor_specific_info, 0,
 			sizeof(struct vendor_specific_info_s));
@@ -3786,8 +4396,9 @@ void hdmirx_hw_init(enum tvin_port_e port)
 	rx.portA_pow5v_state_pre = 0;
 	rx.portB_pow5v_state_pre = 0;
 	rx.portC_pow5v_state_pre = 0;
-	if (pre_port == 0xff)
+	/* if (pre_port == 0xff)
 		hdmirx_wr_top(TOP_HPD_PWR5V, 0x1f & (~(1<<rx.port)));
+	*/
 	if (pre_port != rx.port) {
 		rx.state = FSM_HDMI5V_LOW;
 		hdmirx_set_hpd(rx.port, 0);
@@ -3795,9 +4406,10 @@ void hdmirx_hw_init(enum tvin_port_e port)
 		if (hdcp_22_on) {
 			video_stable_to_esm = 0;
 			hpd_to_esm = 1;
+			switch_set_state(&rx.hpd_sdev, 0x01);
+			if (log_flag & VIDEO_LOG)
+				rx_print("switch_set_state:%d\n", pwr_sts);
 		}
-		hdmirx_wr_dwc(DWC_HDCP22_CONTROL, 0x2);
-		mdelay(100);
 		#endif
 		hdmirx_hw_config();
 		/* pre_port = rx.port; */

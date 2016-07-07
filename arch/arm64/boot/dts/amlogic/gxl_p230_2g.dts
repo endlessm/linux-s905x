@@ -1,5 +1,5 @@
 /*
- * arch/arm64/boot/dts/amlogic/gxl_p212.dts
+ * arch/arm64/boot/dts/amlogic/gxl_p230_2g.dts
  *
  * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
@@ -26,6 +26,7 @@
 / {
 	model = "Amlogic";
 	compatible = "amlogic, Gxbb";
+	amlogic-dt-id = "gxl_p230_2g";
 	interrupt-parent = <&gic>;
 	#address-cells = <2>;
 	#size-cells = <2>;
@@ -37,7 +38,6 @@
 		serial3 = &uart_C;
 		serial4 = &uart_AO_B;
 	};
-
 	memory@00000000 {
 		device_type = "memory";
 		linux,usable-memory = <0x0 0x1000000 0x0 0x7f000000>;
@@ -63,15 +63,6 @@
 			compatible = "amlogic, pstore";
 			reg = <0x0 0x07300000 0x0 0x100000>;
 			no-map;
-		};
-
-		sec_chk:linux,secchk {
-			compatible = "shared-dma-pool";
-			status = "disabled";
-			reusable;
-			size = <0x0 0x2000000>;
-			alignment = <0x0 0x400000>;
-			linux,contiguous-region;
 		};
 		fb_reserved:linux,meson-fb {
 			compatible = "amlogic, fb-memory";
@@ -205,21 +196,40 @@
 			dev_name = "codec_mm";
 			status = "okay";
 	};
-			ethmac: ethernet@0xc9410000 {
-						compatible = "amlogic, gxbb-rmii-dwmac";
-						reg = <0x0 0xc9410000 0x0 0x10000
-						0x0 0xc8834540 0x0 0x8
-						0x0 0xc8834558 0x0 0xc>;
-						interrupts = <0 8 1>;
-						phy-mode= "rmii";
-						mc_val = <0x1800>;
-						resets = <&clock GCLK_IDX_ETHERNET>;
-						reset-names = "ethpower";
-						interrupt-names = "macirq";
-						clocks = <&clock CLK_81>;
-						clock-names = "ethclk81";
-						internal_phy=<1>;
+	/*external phy config*/
+	ethmac: ethernet@0xc9410000 {
+			compatible = "amlogic, gxbb-rgmii-dwmac";
+			reg = <0x0 0xc9410000 0x0 0x10000
+			0x0 0xc8834540 0x0 0x8
+			0x0 0xc8834558 0x0 0xc>;
+			interrupts = <0 8 1>;
+			phy-mode= "rgmii";
+			pinctrl-names = "eth_pins";
+			pinctrl-0 = <&eth_pins>;
+			mc_val = <0x1621>;
+			resets = <&clock GCLK_IDX_ETHERNET>;
+			reset-names = "ethpower";
+			interrupt-names = "macirq";
+			clocks = <&clock CLK_81>;
+			clock-names = "ethclk81";
+			internal_phy=<0>;
     };
+  /*internal phy config*/
+  /*ethmac: ethernet@0xc9410000 {
+			compatible = "amlogic, gxbb-rmii-dwmac";
+			reg = <0x0 0xc9410000 0x0 0x10000
+			0x0 0xc8834540 0x0 0x8
+			0x0 0xc8834558 0x0 0xc>;
+			interrupts = <0 8 1>;
+			phy-mode= "rmii";
+			mc_val = <0x1800>;
+			resets = <&clock GCLK_IDX_ETHERNET>;
+			reset-names = "ethpower";
+			interrupt-names = "macirq";
+			clocks = <&clock CLK_81>;
+			clock-names = "ethclk81";
+			internal_phy=<1>;
+    };*/
 	mesonstream {
 		compatible = "amlogic, codec, streambuf";
 		dev_name = "mesonstream";
@@ -367,11 +377,12 @@
 			3: 250.0M    4: 333.3M    5: 400.0M
 			6: 500.0M    7: 666.7M */
 	};
+	//if use bt, open it
 	bt-dev{
 		compatible = "amlogic, bt-dev";
 		dev_name = "bt-dev";
-		status = "disabled";
-		gpio_reset = <&gpio       GPIOX_18       GPIO_ACTIVE_HIGH>;
+		status = "okay";
+		gpio_reset = <&gpio       GPIOX_17       GPIO_ACTIVE_HIGH>;
 	};
 
 	rtc{
@@ -388,8 +399,11 @@
 		status = "okay";
 		interrupt_pin = <&gpio       GPIOX_7       GPIO_ACTIVE_HIGH>;
 		interrupts = <	0 68 4>;
-		irq_trigger_type = "GPIO_IRQ_HIGH";
+		irq_trigger_type = "GPIO_IRQ_LOW";
 		power_on_pin = <&gpio       GPIOX_6       GPIO_ACTIVE_HIGH>;
+		dhd_static_buf;    //if use bcm wifi, config dhd_static_buf and 32k as bellow
+		pinctrl-names = "wifi_32k_pins";
+		pinctrl-0 = <&wifi_32k_pins>;
 	};
     sd{
         compatible = "amlogic, aml_sd_emmc";
@@ -445,9 +459,9 @@
             caps = "MMC_CAP_8_BIT_DATA","MMC_CAP_MMC_HIGHSPEED",
 					"MMC_CAP_SD_HIGHSPEED", "MMC_CAP_NONREMOVABLE","MMC_CAP_1_8V_DDR",
 					"MMC_CAP_HW_RESET", "MMC_CAP_ERASE", "MMC_CAP_CMD23";
-            caps2 = "MMC_CAP2_HS200";
+            caps2 = "MMC_CAP2_HS200", "MMC_CAP2_HS400";
 			f_min = <300000>;
-            f_max = <200000000>;
+            f_max = <100000000>;
             max_req_size = <0x20000>;          /**256KB*/
 		gpio_dat3 = <&gpio       BOOT_3      GPIO_ACTIVE_HIGH>;
 		hw_reset =  <&gpio       BOOT_9      GPIO_ACTIVE_HIGH>;
@@ -768,7 +782,7 @@
 		compatible = "amlogic, meson-uart";
 		reg = <0x0 0xc11084c0 0x0 0x18>;
 		interrupts = <0 26 1>;
-		status = "disable";
+		status = "okay";
 		clocks = <&clock CLK_XTAL>;
 		clock-names = "clk_uart";
 		fifosize = < 128 >;
@@ -1018,16 +1032,42 @@
 		compatible = "amlogic, aml-thermal";
 		device_name = "thermal";
 		#thermal-sensor-cells = <1>;
-		cpu_dyn_coeff = <140>;
-		/* cpu_freq gpu_freq cpu_core gpu_core */
-		min_state = <1000000 400 1 2>;
-		gpu_dyn_coeff = <437>;
-	};
-	cpucore:thermal_cpu_cores {
-		#cooling-cells = <2>; /* min followed by max */
-	};
-	gpucore:thermal_gpu_cores {
-		#cooling-cells = <2>; /* min followed by max */
+		cooling_devices {
+			cpufreq_cool_cluster0 {
+				min_state = <1000000>;
+				dyn_coeff = <140>;
+				cluster_id = <0>;
+				node_name = "cpus";
+				device_type = "cpufreq";
+			};
+			cpucore_cool_cluster0 {
+				min_state = <1>;
+				dyn_coeff = <0>;
+				cluster_id = <0>;
+				node_name = "cpu_core_cluster0";
+				device_type = "cpucore";
+			};
+			gpufreq_cool {
+				min_state = <400>;
+				dyn_coeff = <437>;
+				cluster_id = <0>;
+				node_name = "mali";
+				device_type = "gpufreq";
+			};
+			gpucore_cool {
+				min_state = <1>;
+				dyn_coeff = <0>;
+				cluster_id = <0>;
+				node_name = "thermal_gpu_cores";
+				device_type = "gpucore";
+			};
+		};
+		cpu_cluster0:cpu_core_cluster0 {
+			#cooling-cells = <2>; /* min followed by max */
+		};
+		gpucore:thermal_gpu_cores {
+			#cooling-cells = <2>; /* min followed by max */
+		};
 	};
 	thermal-zones {
 		soc_thermal {
@@ -1068,7 +1108,7 @@
 				};
 				cpucore_cooling_map {
 					trip = <&control>;
-					cooling-device = <&cpucore 0 3>;
+					cooling-device = <&cpu_cluster0 0 3>;
 					contribution = <1024>;
 				};
 				gpufreq_cooling_map {
@@ -1102,18 +1142,16 @@
 	audio_btpcm_pins:audio_btpcm_pins{
 		/* BT PCM PINMUX SETTING*/
 		amlogic,setmask=<5 0xf00000>;
-		amlogic,clrmask=<5 0x3c33
-				6 0x3>;
+		amlogic,clrmask=<5 0x3c33>;
 		amlogic,pins ="GPIOX_8", "GPIOX_9", "GPIOX_10", "GPIOX_11";
 	};
 };
 &efuse {
-	status = "disabled";
+	status = "okay";
 };
 &audio_data{
 	status = "okay";
 };
 &defendkey {
-	memory-region = <&sec_chk>;
-	status = "disabled";
+	status = "okay";
 };

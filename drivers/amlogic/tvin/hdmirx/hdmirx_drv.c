@@ -94,6 +94,10 @@ static int force_color_range;
 MODULE_PARM_DESC(force_color_range, "\n force_color_range\n");
 module_param(force_color_range, int, 0664);
 
+int pc_mode_en;
+MODULE_PARM_DESC(pc_mode_en, "\n pc_mode_en\n");
+module_param(pc_mode_en, int, 0664);
+
 struct reg_map {
 	unsigned int phy_addr;
 	unsigned int size;
@@ -414,6 +418,8 @@ void hdmirx_get_sig_property(struct tvin_frontend_s *fe,
 	switch (hdmirx_hw_get_color_fmt()) {
 	case 1:
 		prop->color_format = TVIN_YUV444;
+		if (pc_mode_en)
+			prop->dest_cfmt = TVIN_YUV444;
 		/* if (hdmi_yuv444_enable) */
 			/* prop->dest_cfmt = TVIN_YUV444; */
 		break;
@@ -422,11 +428,14 @@ void hdmirx_get_sig_property(struct tvin_frontend_s *fe,
 		break;
 	case 0:
 		prop->color_format = TVIN_RGB444;
-		if ((hdmi_yuv444_enable) && (it_content))
+		if (((hdmi_yuv444_enable) && (it_content)) ||
+			 pc_mode_en)
 			prop->dest_cfmt = TVIN_YUV444;
 		break;
 	default:
 		prop->color_format = TVIN_RGB444;
+		if (pc_mode_en)
+			prop->dest_cfmt = TVIN_YUV444;
 		break;
 	}
 
@@ -495,11 +504,8 @@ void hdmirx_get_sig_property(struct tvin_frontend_s *fe,
 	else
 		prop->decimation_ratio = (hdmirx_hw_get_pixel_repeat() - 1);
 
-	if ((TVIN_SIG_FMT_HDMI_4096_2160_00HZ == sig_fmt) ||
-		(TVIN_SIG_FMT_HDMI_3840_2160_00HZ == sig_fmt) ||
-		(rx.pre_params.interlaced == 1)) {
+	if (rx.pre_params.interlaced == 1)
 		prop->dest_cfmt = TVIN_YUV422;
-	}
 
 	switch (prop->color_format) {
 	case TVIN_YUV444:
@@ -588,18 +594,16 @@ static long hdmirx_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 	/* unsigned int delay_cnt = 0; */
 	void __user *argp = (void __user *)arg;
-	if (argp == NULL)
-		return -ENOSYS;
 
 	if (_IOC_TYPE(cmd) != HDMI_IOC_MAGIC) {
 		pr_err("%s invalid command: %u\n", __func__, cmd);
 		return -ENOSYS;
 	}
-
 	switch (cmd) {
-
 	case HDMI_IOC_HDCP_GET_KSV:{
 		struct _hdcp_ksv ksv;
+		if (argp == NULL)
+			return -ENOSYS;
 		ksv.bksv0 = rx.hdcp.bksv[0];
 		ksv.bksv1 = rx.hdcp.bksv[1];
 		if (copy_to_user(argp, &ksv,
@@ -613,15 +617,56 @@ static long hdmirx_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		hdcp_enable = 1;
 		hdmirx_hw_config();
 		hdmirx_set_hpd(rx.port, 0);
+		rx.state = FSM_HDMI5V_LOW;
+		rx.pre_state = FSM_HDMI5V_LOW;
 		break;
 	case HDMI_IOC_HDCP_OFF:
 		hdcp_enable = 0;
 		hdmirx_hw_config();
 		hdmirx_set_hpd(rx.port, 0);
+		rx.state = FSM_HDMI5V_LOW;
+		rx.pre_state = FSM_HDMI5V_LOW;
 		break;
 	case HDMI_IOC_EDID_UPDATE:
 		hdmi_rx_ctrl_edid_update();
 		hdmirx_set_hpd(rx.port, 0);
+		do_hpd_reset_flag = 1;
+		rx.state = FSM_HDMI5V_LOW;
+		rx.pre_state = FSM_HDMI5V_LOW;
+		break;
+	case HDMI_IOC_PC_MODE_ON:
+		pc_mode_en = 1;
+		/* hdmirx_set_hpd(rx.port, 0); */
+		/* rx.state = FSM_HDMI5V_HIGH; */
+		/* rx.pre_state = FSM_HDMI5V_HIGH; */
+		rx_print("pc mode on\n");
+		break;
+	case HDMI_IOC_PC_MODE_OFF:
+		pc_mode_en = 0;
+		/* hdmirx_set_hpd(rx.port, 0); */
+		/* rx.state = FSM_HDMI5V_HIGH; */
+		/* rx.pre_state = FSM_HDMI5V_HIGH; */
+		rx_print("pc mode off\n");
+		break;
+	case HDMI_IOC_HDCP22_AUTO:
+		hdmirx_set_hpd(rx.port, 0);
+		hdcp_22_on = 1;
+		force_hdcp14_en = 0;
+		hdmirx_hw_config();
+		hpd_to_esm = 1;
+		rx.state = FSM_HDMI5V_HIGH;
+		rx.pre_state = FSM_HDMI5V_HIGH;
+		rx_print("hdcp22 auto\n");
+		break;
+	case HDMI_IOC_HDCP22_FORCE14:
+		hdmirx_set_hpd(rx.port, 0);
+		force_hdcp14_en = 1;
+		hdcp_22_on = 0;
+		hdmirx_wr_dwc(DWC_HDCP22_CONTROL, 0x2);
+		video_stable_to_esm = 0;
+		rx.state = FSM_HDMI5V_HIGH;
+		rx.pre_state = FSM_HDMI5V_HIGH;
+		rx_print("force hdcp1.4\n");
 		break;
 	default:
 		ret = -ENOIOCTLCMD;
@@ -1039,7 +1084,22 @@ static int hdmirx_probe(struct platform_device *pdev)
 			"hdmirx%d-irq", hdevp->index);
 	rx_print("hdevpd irq: %d, %d\n", hdevp->index,
 			hdevp->irq);
-
+	if (pdev->dev.of_node) {
+		ret = of_property_read_u32(pdev->dev.of_node,
+				"repeat", &repeat_function);
+		if (ret) {
+			pr_err("get repeat_function fail.\n");
+			repeat_function = 0;
+		}
+	}
+	rx.hdcp.switch_hdcp_auth.name = "hdmirx_hdcp_auth";
+	ret = switch_dev_register(&rx.hdcp.switch_hdcp_auth);
+	if (ret)
+		pr_err("hdcp_auth switch init fail.\n");
+	rx.hpd_sdev.name = "hdmirx_hpd";
+	ret = switch_dev_register(&rx.hpd_sdev);
+	if (ret)
+		pr_err("hdmirx_hpd switch init fail.\n");
 	if (request_irq(hdevp->irq,
 			&irq_handler,
 			IRQF_SHARED,
@@ -1072,15 +1132,6 @@ static int hdmirx_probe(struct platform_device *pdev)
 		if (ret) {
 			pr_err("get port_map fail.\n");
 			real_port_map = 0x3120;
-		}
-	}
-
-	if (pdev->dev.of_node) {
-		ret = of_property_read_u32(pdev->dev.of_node,
-				"repeat", &repeat_function);
-		if (ret) {
-			pr_err("get repeat_function fail.\n");
-			repeat_function = 0;
 		}
 	}
 
@@ -1153,12 +1204,13 @@ static int hdmirx_probe(struct platform_device *pdev)
 				clk_rate/1000000);
 	}
 
-	hdmirx_hw_probe();
 	/* create for hot plug function */
 	hpd_wq = create_singlethread_workqueue(hdevp->frontend.name);
 	INIT_DELAYED_WORK(&hpd_dwork, hdmirx_plug_det);
 
 	queue_delayed_work(hpd_wq, &hpd_dwork, msecs_to_jiffies(5));
+
+	hdmirx_hw_probe();
 
 	rx_print("hdmirx: driver probe ok\n");
 
@@ -1240,7 +1292,7 @@ static int hdmirx_resume(struct platform_device *pdev)
 	if ((resume_flag == 0) && (rx.open_fg == 1))
 		add_timer(&devp_hdmirx_suspend->timer);
 	rx_print("hdmirx: resume module---end,rx.open_fg:%d\n", rx.open_fg);
-
+	pre_port = 0xff;
 	return 0;
 
 }
@@ -1252,9 +1304,22 @@ static int hdmirx_restore(struct device *dev)
 	queue_delayed_work(hpd_wq, &hpd_dwork, msecs_to_jiffies(5));
 	return 0;
 }
+static int hdmirx_pm_suspend(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	return hdmirx_suspend(pdev, PMSG_SUSPEND);
+}
+
+static int hdmirx_pm_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	return hdmirx_resume(pdev);
+}
 
 const struct dev_pm_ops hdmirx_pm = {
 	.restore	= hdmirx_restore,
+	.suspend	= hdmirx_pm_suspend,
+	.resume		= hdmirx_pm_resume,
 };
 #endif
 

@@ -56,6 +56,8 @@ static int inited_vcodec_num;
 static int poweron_clock_level;
 static int keep_vdec_mem;
 static unsigned int debug_trace_num = 16 * 20;
+static unsigned int clk_config;
+
 static int vdec_irq[VDEC_IRQ_MAX];
 static struct platform_device *vdec_device;
 static struct platform_device *vdec_core_device;
@@ -74,6 +76,23 @@ struct am_reg {
 };
 
 static struct vdec_dev_reg_s vdec_dev_reg;
+
+/*
+ clk_config:
+ 0:default
+ 1:no gp0_pll;
+ 2:always used gp0_pll;
+ >=10:fixed n M clk;
+ == 100 , 100M clks;
+*/
+unsigned int get_vdec_clk_config_settings(void)
+{
+	return clk_config;
+}
+void update_vdec_clk_config_settings(unsigned int config)
+{
+	clk_config = config;
+}
 
 static bool hevc_workaround_needed(void)
 {
@@ -150,10 +169,18 @@ s32 vdec_init(enum vformat_e vf, int is_4k)
 {
 	s32 r;
 	int retry_num = 0;
-
+	int more_buffers = 0;
 	if (inited_vcodec_num >= SUPPORT_VCODEC_NUM) {
 		pr_err("We only support the one video code at each time\n");
 		return -EIO;
+	}
+	if (is_4k && vf < VFORMAT_H264) {
+		/*old decoder don't support 4k
+			but size is bigger;
+			clear 4k flag, and used more buffers;
+		*/
+		more_buffers = 1;
+		is_4k = 0;
 	}
 	if (vf == VFORMAT_H264_4K2K ||
 		(vf == VFORMAT_HEVC && is_4k)) {
@@ -179,6 +206,8 @@ s32 vdec_init(enum vformat_e vf, int is_4k)
 				m4k_size = 32 * SZ_1M;
 			if ((m4k_size > 0) && (m4k_size < 200 * SZ_1M))
 				alloc_size = m4k_size;
+		} else if (more_buffers) {
+			alloc_size = alloc_size + 16 * SZ_1M;
 		}
 		vdec_dev_reg.mem_start = codec_mm_alloc_for_dma(MEM_NAME,
 			alloc_size / PAGE_SIZE, 4 + PAGE_SHIFT,
@@ -237,7 +266,8 @@ s32 vdec_release(enum vformat_e vf)
 	if (delay_release-- <= 0 &&
 			!keep_vdec_mem &&
 			vdec_mem_alloced_from_codec &&
-			vdec_dev_reg.mem_start) {
+			vdec_dev_reg.mem_start &&
+			get_blackout_policy()) {
 		codec_mm_free_for_dma(MEM_NAME, vdec_dev_reg.mem_start);
 		vdec_cma_page = NULL;
 		vdec_dev_reg.mem_start = reserved_mem_start;
@@ -1255,6 +1285,7 @@ RESERVEDMEM_OF_DECLARE(vdec, "amlogic, vdec-memory", vdec_mem_setup);
 
 module_param(debug_trace_num, uint, 0664);
 module_param(hevc_max_reset_count, int, 0664);
+module_param(clk_config, uint, 0664);
 
 module_init(vdec_module_init);
 module_exit(vdec_module_exit);

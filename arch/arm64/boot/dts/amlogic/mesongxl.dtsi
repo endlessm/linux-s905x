@@ -28,27 +28,27 @@
 		#size-cells = <0>;
 		#cooling-cells = <2>; /* min followed by max */
 
-		cpu@0 {
+		cpu0:cpu@0 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a53","arm,armv8";
 			reg = <0x0 0x0>;
 			enable-method = "psci";
 		};
 
-		cpu@1 {
+		cpu1:cpu@1 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a53","arm,armv8";
 			reg = <0x0 0x1>;
 			enable-method = "psci";
 		};
-		cpu@2 {
+		cpu2:cpu@2 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a53","arm,armv8";
 			reg = <0x0 0x2>;
 			enable-method = "psci";
 		};
 
-		cpu@3 {
+		cpu3:cpu@3 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a53","arm,armv8";
 			reg = <0x0 0x3>;
@@ -204,6 +204,15 @@
 			gpio-controller;
 			#gpio-cells = <2>;
 		};
+		eth_pins:eth_pins{
+                        amlogic,setmask =<4 0xfffc00>;
+                        amlogic,clrmask =<4 0x3fc>,
+                                         <3 0xfffff800>;
+                        amlogic,pins="GPIOZ_0","GPIOZ_1","GPIOZ_2","GPIOZ_3",
+                                "GPIOZ_4","GPIOZ_5","GPIOZ_6","GPIOZ_7",
+                                "GPIOZ_8","GPIOZ_9","GPIOZ_10","GPIOZ_11",
+                                "GPIOZ_12","GPIOZ_13","GPIOZ_15";
+                };
 		jtag_apao_pins:jtag_apao_pin{
 			amlogic,clrmask = <6 0x7fe0000>;
 			amlogic,pins = "GPIOH_6","GPIOH_7","GPIOH_8","GPIOH_9";
@@ -236,6 +245,10 @@
 		c_uart_pins:c_uart{
 			amlogic,setmask=<5 0x3000>;
 			amlogic,pins="GPIOX_8", "GPIOX_9";
+		};
+		wifi_32k_pins:wifi_32k_pins{
+			amlogic,setmask=<5 0x8000>;
+			amlogic,pins="GPIOX_16";
 		};
 		sd_clk_cmd_pins:sd_clk_cmd_pins{
 			amlogic,setmask=<6 0x0000000c>,
@@ -432,7 +445,7 @@
 		};
 		d_i2c_master:d_i2c{
 			amlogic,setmask=<5 0x30>;
-			amlogic,clrmask=<5 0x300c03 6 0x3>;
+			amlogic,clrmask=<5 0x300c03>;
 			amlogic,pins="GPIOX_10","GPIOX_11";
 		};
 
@@ -675,5 +688,5 @@
 
 &gpu{
 /*gpu max freq is 750M*/
-    tbl = <&clk125_cfg &clk285_cfg &clk400_cfg &clk500_cfg &clk666_cfg &clk750_cfg>;
+    tbl = <&clk125_cfg &clk285_cfg &clk400_cfg &clk500_cfg &clk666_cfg &clk750_cfg &clk750_cfg>;
 };

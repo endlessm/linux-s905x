@@ -1,14 +1,20 @@
 /*
- * AMLOGIC Ldim
+ * drivers/amlogic/display/backlight/aml_ldim/ldim_func.h
  *
- * Author:
- *
- * Copyright (C) 2010 Amlogic Inc.
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+*/
+
 #include <linux/cdev.h>
 #include <linux/amlogic/iomap.h>
 
@@ -18,8 +24,10 @@ extern unsigned int invalid_val_cnt;
 
 #define Wr_reg_bits(adr, val, start, len)  \
 		aml_vcbus_update_bits(adr, ((1<<len)-1)<<start, val<<start)
+/*#define Rd_reg_bits(adr, start, len)  \
+		(aml_read_vcbus(adr)&(((1<<len)-1)<<start))*/
 #define Rd_reg_bits(adr, start, len)  \
-		(aml_read_vcbus(adr)&(((1<<len)-1)<<start))
+		((aml_read_vcbus(adr)>>start)&((1<<len)-1))
 
 extern int  ldim_round(int ix, int ib);
 extern void ldim_stts_en(unsigned int resolution, unsigned int pix_drop_mode,

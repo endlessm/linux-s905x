@@ -816,6 +816,7 @@ static int Edid_ParsingY420VDBBlock(struct rx_cap *pRXCap,
 {
 	unsigned char tag = 0, ext_tag = 0, data_end = 0;
 	unsigned int pos = 0;
+	int i = 0, found = 0;
 
 	tag = (buf[pos] >> 5) & 0x7;
 	data_end = (buf[pos] & 0x1f)+1;
@@ -827,11 +828,25 @@ static int Edid_ParsingY420VDBBlock(struct rx_cap *pRXCap,
 
 	pos++;
 	while (pos < data_end) {
-		if (pRXCap->VIC_count < VIC_MAX_NUM)
-			pRXCap->VIC[pRXCap->VIC_count] =
+		if (pRXCap->VIC_count < VIC_MAX_NUM) {
+			for (i = 0; i < pRXCap->VIC_count; i++) {
+				if (pRXCap->VIC[i] == buf[pos]) {
+					pRXCap->VIC[i] =
+					HDMITX_VIC420_OFFSET + buf[pos];
+					found = 1;
+					/* Here we do not break,because
+						some EDID may have the same
+						repeated VICs
+					*/
+				}
+			}
+			if (0 == found) {
+				pRXCap->VIC[pRXCap->VIC_count] =
 				HDMITX_VIC420_OFFSET + buf[pos];
+				pRXCap->VIC_count++;
+			}
+		}
 		pos++;
-		pRXCap->VIC_count++;
 	}
 
 	return 0;
@@ -1344,10 +1359,10 @@ static void hdmitx_edid_set_default_vic(struct hdmitx_dev *hdmitx_device)
 {
 	struct rx_cap *pRXCap = &(hdmitx_device->RXCap);
 	pRXCap->VIC_count = 0x3;
-	pRXCap->VIC[0] = 2;
-	pRXCap->VIC[1] = 4;
-	pRXCap->VIC[2] = 16;
-	pRXCap->native_VIC = 4;
+	pRXCap->VIC[0] = HDMI_720x480p60_16x9;
+	pRXCap->VIC[1] = HDMI_1280x720p60_16x9;
+	pRXCap->VIC[2] = HDMI_1920x1080p60_16x9;
+	pRXCap->native_VIC = HDMI_720x480p60_16x9;
 	hdmitx_device->vic_count = pRXCap->VIC_count;
 	hdmi_print(IMP, EDID "HDMI: set default vic\n");
 }
@@ -1647,10 +1662,10 @@ int hdmitx_edid_parse(struct hdmitx_dev *hdmitx_device)
 	if ((BlockCount == 1) && (EDID_buf[0x81] == 1)) {
 		hdmitx_device->RXCap.IEEEOUI = 0;
 		hdmitx_device->RXCap.VIC_count = 0x3;
-		hdmitx_device->RXCap.VIC[0] = 3;
-		hdmitx_device->RXCap.VIC[1] = 4;
-		hdmitx_device->RXCap.VIC[2] = 16;
-		hdmitx_device->RXCap.native_VIC = 2;
+		hdmitx_device->RXCap.VIC[0] = HDMI_720x480p60_16x9;
+		hdmitx_device->RXCap.VIC[1] = HDMI_1280x720p60_16x9;
+		hdmitx_device->RXCap.VIC[2] = HDMI_1920x1080p60_16x9;
+		hdmitx_device->RXCap.native_VIC = HDMI_720x480p60_16x9;
 		hdmitx_device->vic_count = hdmitx_device->RXCap.VIC_count;
 		hdmi_print(IMP, EDID "HDMI: set default vic\n");
 		return 0;

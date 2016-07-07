@@ -182,6 +182,9 @@ static int  aml_sd_emmc_auto_calibration(struct mmc_host *mmc,
 	struct sd_emmc_delay *line_dly = (struct sd_emmc_delay *)&line_delay;
 	u32 adjust = sd_emmc_regs->gadjust;
 	struct sd_emmc_adjust *gadjust = (struct sd_emmc_adjust *)&adjust;
+	u32 vclk = sd_emmc_regs->gclock;
+	struct sd_emmc_clock *clkc = (struct sd_emmc_clock *)&(vclk);
+	u8 clk_div_tmp = clkc->div;
 	u32 base_index[10] = {0};
 	u32 base_index_val = 0;
 	u32 base_index_min = max_index + 1;
@@ -213,6 +216,10 @@ static int  aml_sd_emmc_auto_calibration(struct mmc_host *mmc,
 		bus_width = 4;
 	else
 		bus_width = 8;
+	/* setting clock 200M to calibration */
+	clkc->div = 5;
+	sd_emmc_regs->gclock = vclk;
+	pdata->clkc = vclk;
 	max_index = (sd_emmc_regs->gclock & 0x3f) - 1;
 
 _cali_retry:
@@ -374,10 +381,11 @@ _cali_retry:
 	line_dly->dat7 = (((max_cal_result - cal_result[7]) / delay_step)
 			> 15) ? 15 :
 			((max_cal_result - cal_result[7]) / delay_step);
-	/* set default cmd delay*/
-	if (get_cpu_type() == MESON_CPU_MAJOR_ID_GXBB)
-		gadjust->cmd_delay = 7;
 
+	/* restore original clk setting */
+	clkc->div = clk_div_tmp;
+	sd_emmc_regs->gclock = vclk;
+	pdata->clkc = vclk;
 	pr_info("%s: line_delay =0x%x, max_cal_result =%d\n",
 		mmc_hostname(mmc), line_delay, max_cal_result);
 	sd_emmc_regs->gadjust = adjust;
@@ -639,7 +647,8 @@ _cali_retry:
 }
 #endif
 
-#define TUNING_RETRY_NUM 10
+#define MAX_TUNING_RETRY 4
+#define TUNING_NUM_PER_POINT 10
 static u32 aml_sd_emmc_tuning_transfer(struct mmc_host *mmc,
 	u32 opcode, const u8 *blk_pattern, u8 *blk_test, u32 blksz)
 {
@@ -651,7 +660,7 @@ static u32 aml_sd_emmc_tuning_transfer(struct mmc_host *mmc,
 	u32 tuning_err = 0;
 	u32 n, nmatch;
 	/* try ntries */
-	for (n = 0, nmatch = 0; n < TUNING_RETRY_NUM; n++) {
+	for (n = 0, nmatch = 0; n < TUNING_NUM_PER_POINT; n++) {
 		tuning_err = aml_sd_emmc_cali_transfer(mmc,
 						opcode, blk_test, blksz);
 		if (!tuning_err) {
@@ -699,6 +708,7 @@ static int aml_sd_emmc_execute_tuning_(struct mmc_host *mmc, u32 opcode,
 	int adj_delay = 0;
 	struct aml_emmc_adjust *emmc_adj = &host->emmc_adj;
 	u8 *blk_test;
+	u8 tuning_num = 0;
 	u32 clock, clk_div;
 	u32 adj_delay_find;
 	int wrap_win_start = -1, wrap_win_size = 0;
@@ -738,7 +748,7 @@ tunning:
 		nmatch = aml_sd_emmc_tuning_transfer(mmc, opcode,
 				blk_pattern, blk_test, blksz);
 		/*get a ok adjust point!*/
-		if (nmatch == TUNING_RETRY_NUM) {
+		if (nmatch == TUNING_NUM_PER_POINT) {
 			if (adj_delay == 0)
 				wrap_win_start = adj_delay;
 
@@ -790,6 +800,11 @@ tunning:
 		curr_win_size = 0;
 	}
 	if (best_win_size <= 0) {
+		if ((tuning_num++ > MAX_TUNING_RETRY)
+			|| (clkc->div <= 10)) {
+			kfree(blk_test);
+			return -1;
+		}
 		clkc->div += 1;
 		sd_emmc_regs->gclock = vclk;
 		pdata->clkc = sd_emmc_regs->gclock;
@@ -801,13 +816,15 @@ tunning:
 			mmc_hostname(host->mmc), best_win_start, best_win_size);
 	}
 
-	if (best_win_size == clk_div)
-		adj_delay_find = 0;
-	else {
+	if ((best_win_size != clk_div)
+		|| (aml_card_type_sdio(pdata)
+			&& (get_cpu_type() == MESON_CPU_MAJOR_ID_GXM))) {
 		adj_delay_find = best_win_start + (best_win_size - 1) / 2
 						+ (best_win_size - 1) % 2;
 		adj_delay_find = adj_delay_find % clk_div;
-	}
+	} else
+		adj_delay_find = 0;
+
 	/* fixme, for retry debug. */
 	if (aml_card_type_mmc(pdata)
 		&& (clk_div <= 5) && (adj_win_start != 100)
@@ -851,7 +868,7 @@ static int aml_sd_emmc_rxclk_find(struct mmc_host *mmc,
 	u8 n;
 	int rxclk_find;
 	for (n = 0; n < total_point; n++) {
-		if (rx_tuning_result[n] == TUNING_RETRY_NUM) {
+		if (rx_tuning_result[n] == TUNING_NUM_PER_POINT) {
 			if (n == 0)
 				wrap_win_start = n;
 			if (wrap_win_start >= 0)
@@ -860,7 +877,8 @@ static int aml_sd_emmc_rxclk_find(struct mmc_host *mmc,
 				curr_win_start = n;
 			curr_win_size++;
 			pr_info("%s: rx_tuning_result[%d] = %d\n",
-				mmc_hostname(host->mmc), n, TUNING_RETRY_NUM);
+				mmc_hostname(host->mmc), n,
+				TUNING_NUM_PER_POINT);
 		} else {
 			if (curr_win_start >= 0) {
 				if (*best_win_start < 0) {
@@ -1049,11 +1067,11 @@ static int aml_sd_emmc_execute_tuning(struct mmc_host *mmc, u32 opcode)
 #ifdef AML_CALIBRATION
 	if ((aml_card_type_mmc(pdata))
 			&& (mmc->ios.timing != MMC_TIMING_MMC_HS400)) {
-		if (clkc->div <= 7) {
+		if (clkc->div <= 10) {
 			if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXL)
 				err = aml_sd_emmc_auto_calibration(mmc,
 						&adj_win_start);
-			else
+			else if (clkc->div <= 7)
 				err = aml_sd_emmc_execute_tuning_index(mmc,
 						&adj_win_start);
 		}
@@ -1071,15 +1089,27 @@ static int aml_sd_emmc_execute_tuning(struct mmc_host *mmc, u32 opcode)
 		|| (get_cpu_type() == MESON_CPU_MAJOR_ID_GXBB)) {
 		err = aml_sd_emmc_execute_tuning_(mmc, opcode,
 				&tuning_data, adj_win_start);
+		if (!err)
+			host->tuning_mode = ADJ_TUNING_MODE;
 	} else if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXL) {
-		err = 0;
-		adjust = sd_emmc_regs->gadjust;
-		gadjust->cali_enable = 1;
-		gadjust->adj_auto = 1;
-		sd_emmc_regs->gadjust = adjust;
+		if (aml_card_type_sdio(pdata)) {
+			err = aml_sd_emmc_execute_tuning_(mmc, opcode,
+					&tuning_data, adj_win_start);
+			if (!err)
+				host->tuning_mode = ADJ_TUNING_MODE;
+		} else {
+			err = 0;
+			adjust = sd_emmc_regs->gadjust;
+			gadjust->cali_enable = 1;
+			gadjust->adj_auto = 1;
+			sd_emmc_regs->gadjust = adjust;
+			host->tuning_mode = AUTO_TUNING_MODE;
+		}
 	} else {
 		err = aml_sd_emmc_execute_tuning_rxclk(mmc, opcode,
 				&tuning_data);
+		if (!err)
+			host->tuning_mode = RX_PHASE_DELAY_TUNING_MODE;
 	}
 
 	pr_info("%s: gclock =0x%x, gdelay=0x%x, gadjust=0x%x\n",
@@ -1113,16 +1143,21 @@ static void aml_sd_emmc_reg_init(struct amlsd_host *host)
 
 	pr_info("%s %d\n", __func__, __LINE__);
 
-	/* need clear first? */
-	vclkc = 0;
+	/* clear controller's main register setting which set in uboot*/
+	sd_emmc_regs->gdelay = 0;
+	sd_emmc_regs->gadjust = 0;
+	sd_emmc_regs->gclock = 0;
+	sd_emmc_regs->gcfg = 0;
 
+	vclkc = 0;
 	pclkc->div = 60;	 /* 400KHz */
 	pclkc->src = 0;	  /* 0: Crystal 24MHz */
 	pclkc->core_phase = 2;	  /* 2: 180 phase */
+	pclkc->rx_phase = 0;
+	pclkc->tx_phase = 0;
 	pclkc->always_on = 1;	  /* Keep clock always on */
-
 	sd_emmc_regs->gclock = vclkc;
-	/* need clear first?? */
+
 	vconf = 0;
 	/* 1bit mode */
 	pconf->bus_width = 0;
@@ -1133,11 +1168,10 @@ static void aml_sd_emmc_reg_init(struct amlsd_host *host)
 	/* 1024 CLK cycle, Max. 100mS. */
 	pconf->rc_cc = 4;
 	pconf->err_abort = 0;
-
 	pconf->auto_clk = 1;
 	sd_emmc_regs->gcfg = vconf;
-	/*Clear irq status first*/
 
+	/*Clear irq status first*/
 #ifdef SD_EMMC_IRQ_EN_ALL_INIT
 	/*Set Irq Control*/
 	sd_emmc_regs->gstatus = 0xffff;
@@ -1696,6 +1730,12 @@ void aml_sd_emmc_start_cmd(struct amlsd_platform *pdata,
 		sd_emmc_regs->gcfg = vconf;
 		host->sd_sdio_switch_volat_done = 0;
 	}
+
+	if ((pconf->auto_clk) && (pdata->auto_clk_close)) {
+		pconf->auto_clk = 0;
+		sd_emmc_regs->gcfg = vconf;
+	}
+
 	/*check bus width*/
 	if (pconf->bus_width != pdata->width) {
 		conf_flag |= 1<<0;
@@ -2223,6 +2263,34 @@ void aml_host_bus_fsm_show(struct amlsd_host *host, int fsm_val)
 	}
 }
 
+void mmc_cmd_LBA_show(struct mmc_host *mmc, struct mmc_request *mrq)
+{
+	int i;
+	uint64_t offset, size;
+	struct partitions *pp;
+
+	if (!pt_fmt || !mrq->cmd->arg) /* no disk or no arg, nothing to do */
+		return;
+
+	for (i = 0; i < pt_fmt->part_num; i++) {
+		pp = &(pt_fmt->partitions[i]);
+		offset = pp->offset >> 9; /* unit:512 bytes */
+		size = pp->size >> 9; /* unit:512 bytes */
+
+		if ((mrq->cmd->arg >= offset)
+				&& (mrq->cmd->arg < (offset + size))) {
+			sd_emmc_err("%s: cmd 0x%x, arg 0x%x, operation is in [%s] disk!\n",
+				mmc_hostname(mmc),
+				mrq->cmd->opcode, mrq->cmd->arg, pp->name);
+			break;
+		}
+	}
+	if (i == pt_fmt->part_num)
+		sd_emmc_err("%s: cmd 0x%x, arg 0x%x, operation is in [unknown] disk!\n",
+			mmc_hostname(mmc),
+			mrq->cmd->opcode, mrq->cmd->arg);
+}
+
 /*sd_emmc controller irq*/
 static irqreturn_t aml_sd_emmc_irq(int irq, void *dev_id)
 {
@@ -2381,6 +2449,8 @@ static irqreturn_t aml_sd_emmc_irq(int irq, void *dev_id)
 		}
 		if (host->is_tunning == 0)
 			aml_host_bus_fsm_show(host, ista->bus_fsm);
+		if (aml_card_type_mmc(pdata))
+			mmc_cmd_LBA_show(mmc, mrq);
 	}
 
 
@@ -2585,9 +2655,22 @@ static irqreturn_t aml_sd_emmc_data_thread(int irq, void *data)
 			sd_emmc_err("retry cmd %d the %d-th time(s)\n",
 				mrq->cmd->opcode, mrq->cmd->retries);
 			/* chage configs on current host */
-			if ((emmc_adj->clk_div > 5)
-					|| (get_cpu_type()
-						== MESON_CPU_MAJOR_ID_GXBB)) {
+			switch (host->tuning_mode) {
+			case AUTO_TUNING_MODE:
+				if ((status == HOST_RSP_TIMEOUT_ERR)
+					|| (status == HOST_RSP_CRC_ERR)) {
+					if (gadjust->cmd_delay <= 13)
+						gadjust->cmd_delay += 2;
+					else if (gadjust->cmd_delay % 2)
+						gadjust->cmd_delay = 0;
+					else
+						gadjust->cmd_delay = 1;
+					sd_emmc_regs->gadjust = adjust;
+					sd_emmc_err("cmd_delay change to %d\n",
+							gadjust->cmd_delay);
+				}
+				break;
+			case ADJ_TUNING_MODE:
 				emmc_adj->adj_point++;
 				emmc_adj->adj_point	%= emmc_adj->clk_div;
 				pr_err("emmc, %d retry, adj %d -> %d\n",
@@ -2599,7 +2682,8 @@ static irqreturn_t aml_sd_emmc_data_thread(int irq, void *data)
 				gadjust->adj_delay = emmc_adj->adj_point;
 				gadjust->adj_enable = 1;
 				sd_emmc_regs->gadjust = adjust;
-			} else {
+				break;
+			case RX_PHASE_DELAY_TUNING_MODE:
 				emmc_rxclk->rxclk_point++;
 				emmc_rxclk->rxclk_point %= 25;
 				if (emmc_rxclk->rxclk_point < 10) {
@@ -2621,6 +2705,18 @@ static irqreturn_t aml_sd_emmc_data_thread(int irq, void *data)
 				clkc->rx_delay = emmc_rxclk->rxclk_rx_delay;
 				sd_emmc_regs->gclock = vclk;
 				pdata->clkc = vclk;
+				break;
+			case NONE_TUNING:
+			default:
+				rx_phase = clkc->rx_phase;
+				rx_phase++;
+				rx_phase %= 4;
+				pr_err("emmc: retry, rx_phase %d -> %d\n",
+						clkc->rx_phase, rx_phase);
+				clkc->rx_phase = rx_phase;
+				sd_emmc_regs->gclock = vclk;
+				pdata->clkc = vclk;
+				break;
 			}
 		}
 		/* last retry effort! */
@@ -2746,6 +2842,7 @@ static void aml_sd_emmc_set_timing(
 				adjust = sd_emmc_regs->gadjust;
 				gadjust->ds_enable = 1;
 				sd_emmc_regs->gadjust = adjust;
+				host->tuning_mode = AUTO_TUNING_MODE;
 			}
 		}
 		ctrl->ddr = 1;
@@ -2803,6 +2900,9 @@ static void aml_sd_emmc_set_bus_width(
 /*call by mmc, power on, power off ...*/
 static void aml_sd_emmc_set_power(struct amlsd_platform *pdata, u32 power_mode)
 {
+	struct amlsd_host *host = (void *)pdata->host;
+	struct sd_emmc_regs *sd_emmc_regs = host->sd_emmc_regs;
+
 	switch (power_mode) {
 	case MMC_POWER_ON:
 		if (pdata->pwr_pre)
@@ -2813,6 +2913,8 @@ static void aml_sd_emmc_set_power(struct amlsd_platform *pdata, u32 power_mode)
 	case MMC_POWER_UP:
 		break;
 	case MMC_POWER_OFF:
+		sd_emmc_regs->gdelay = 0;
+		sd_emmc_regs->gadjust = 0;
 	default:
 		if (pdata->pwr_pre)
 			pdata->pwr_pre(pdata);
@@ -2826,8 +2928,6 @@ static void aml_sd_emmc_set_power(struct amlsd_platform *pdata, u32 power_mode)
 static void aml_sd_emmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct amlsd_platform *pdata = mmc_priv(mmc);
-	struct amlsd_host *host = (void *)pdata->host;
-	struct sd_emmc_regs *sd_emmc_regs = host->sd_emmc_regs;
 
 	if (!pdata->is_in)
 		return;
@@ -2842,11 +2942,6 @@ static void aml_sd_emmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 
 	/* Set Date Mode */
 	aml_sd_emmc_set_timing(pdata, ios->timing);
-
-	if (ios->power_mode == MMC_POWER_OFF) {
-		sd_emmc_regs->gdelay = 0;
-		sd_emmc_regs->gadjust = 0;
-	}
 
 	if (ios->chip_select == MMC_CS_HIGH) {
 		aml_cs_high(pdata);
@@ -2912,6 +3007,13 @@ int aml_sd_emmc_get_cd(struct mmc_host *mmc)
 {
 	struct amlsd_platform *pdata = mmc_priv(mmc);
 	return pdata->is_in; /* 0: no inserted  1: inserted */
+}
+
+int aml_signal_voltage_switch(struct mmc_host *mmc, struct mmc_ios *ios)
+{
+	 struct amlsd_platform *pdata = mmc_priv(mmc);
+
+	 return aml_sd_voltage_switch(pdata, ios->signal_voltage);
 }
 
 /* Check if the card is pulling dat[0:3] low */
@@ -3131,6 +3233,7 @@ static const char *emmc_read_usage_str = {
 "echo tx_phase >read\n"
 "echo line_delay >read\n"
 "echo co_phase >read\n"
+"echo auto_clk >read\n"
 };
 
 static ssize_t emmc_debug_common_help(struct class *class,
@@ -3151,6 +3254,7 @@ static const char *emmc_usage_str = {
 "echo rx_phase 0-3 >debug\n"
 "echo tx_phase 0-3 >debug\n"
 "echo co_phase 0-3 >debug\n"
+"echo auto_clk 0-1 >debug\n"
 };
 static ssize_t emmc_debug_help(struct class *class,
 		struct class_attribute *attr, char *buf)
@@ -3175,6 +3279,17 @@ static ssize_t emmc_debug(struct class *class, struct class_attribute *attr,
 	struct sd_emmc_config *ctrl = (struct sd_emmc_config *)&vctrl;
 	u32 clock;
 	switch (buf[0]) {
+	case 'a':
+		ret = sscanf(buf, "auto_clk %d", &t[0]);
+		if (t[0] == 0) {
+			ctrl->auto_clk = 0;
+			pr_info("set auto_clk 0, close auto clock\n");
+		} else {
+			ctrl->auto_clk = 1;
+			pr_info("set auto_clk 1, open auto clock\n");
+		}
+		sd_emmc_regs->gcfg = vctrl;
+		break;
 	case 'c':
 		if (buf[1] == 'l') {
 			ret = sscanf(buf, "clock %d", &t[0]);
@@ -3271,6 +3386,9 @@ static ssize_t emmc_read_debug(struct class *class,
 	u32 clock;
 
 	switch (buf[0]) {
+	case 'a':
+		pr_info("atuc_clk = %d\n", ctrl->auto_clk);
+		break;
 	case 'c':
 		if (buf[1] == 'l') {
 			clock = clk_rate / pclkc->div;
@@ -3286,7 +3404,7 @@ static ssize_t emmc_read_debug(struct class *class,
 		break;
 	case 'l':
 		pr_info("line_deley = 0x%x\n", line_delay);
-			break;
+		break;
 	case 'r':
 		if (buf[1] == 'x') {
 				pr_info("rx_phase = 0x%x\n", pclkc->rx_phase);
@@ -3524,6 +3642,7 @@ static int aml_sd_emmc_probe(struct platform_device *pdev)
 	mmc->max_current_180 = 300; /* 300 mA in 1.8V */
 	mmc->max_current_330 = 300; /* 300 mA in 3.3V */
 	mmc->uhs_speed = 0;
+	mmc->vol_switch_delay = pdata->vol_switch_delay;
 
 	if (aml_card_type_sdio(pdata)) { /* if sdio_wifi */
 		mmc->host_rescan_disable = true;
@@ -3575,18 +3694,17 @@ static int aml_sd_emmc_probe(struct platform_device *pdev)
 		host->irq_out = irq_of_parse_and_map(
 			pdev->dev.of_node, 2);
 		pdata->irq_init(pdata);
-		ret = request_threaded_irq(host->irq_in,
-			(irq_handler_t)aml_sd_irq_cd, aml_irq_cd_thread,
-			IRQF_DISABLED, "sd_emmc_mmc_in", (void *)pdata);
+		mutex_init(&pdata->in_out_lock);
+		ret = request_threaded_irq(host->irq_in, NULL,
+			aml_irq_cd_thread, IRQF_ONESHOT,
+			"sd_in", (void *)pdata);
 		if (ret) {
 			sd_emmc_err("Failed to request mmc IN detect\n");
 			goto probe_free_host;
 		}
-		ret |= request_threaded_irq(host->irq_out,
-			(irq_handler_t)aml_sd_irq_cd,
-			aml_irq_cd_thread,
-			IRQF_DISABLED,
-			"sd_emmc_mmc_out", (void *)pdata);
+		ret |= request_threaded_irq(host->irq_out, NULL,
+			aml_irq_cd_thread, IRQF_ONESHOT,
+			"sd_out", (void *)pdata);
 		if (ret) {
 			sd_emmc_err("Failed to request mmc OUT detect\n");
 			goto fail_cd_irq_in;

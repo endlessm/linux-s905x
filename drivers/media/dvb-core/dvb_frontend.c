@@ -2711,7 +2711,8 @@ static int dtv_set_frontend(struct dvb_frontend *fe)
 	fepriv->algo_status |= DVBFE_ALGO_SEARCH_AGAIN;
 	if (c->delivery_system == SYS_ANALOG &&
 		(c->analog.flag & ANALOG_FLAG_ENABLE_AFC)) {
-		dvb_frontend_add_event(fe, 0);
+		/*dvb_frontend_add_event(fe, 0); */
+		dvb_frontend_clear_events(fe);
 		dvb_frontend_wakeup(fe);
 	} else if (fe->ops.set_frontend) {
 		fe->ops.set_frontend(fe);
@@ -2987,6 +2988,13 @@ static int dvb_frontend_ioctl_legacy(struct file *file,
 		break;
 
 	case FE_SET_MODE:
+		/*
+		    set thread idle to avoid unnecessary EVT notification.
+		    potential calls due to the EVT/s
+		    may destroy the internal info.
+		*/
+		fepriv->state = FESTATE_IDLE;
+
 		if (fe->ops.set_mode) {
 			err = fe->ops.set_mode(fe, (long)parg);
 			if (err == 0) {

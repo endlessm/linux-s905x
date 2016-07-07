@@ -199,13 +199,23 @@ static inline u32 index2canvas(u32 index)
 static void set_frame_info(struct vframe_s *vf)
 {
 	unsigned ar_bits;
+	u32 temp;
 
 #ifdef CONFIG_AM_VDEC_MPEG12_LOG
 	bool first = (frame_width == 0) && (frame_height == 0);
 #endif
+	temp = READ_VREG(MREG_PIC_WIDTH);
+	if (temp > 1920)
+		vf->width = frame_width = 1920;
+	else
+		vf->width = frame_width = temp;
 
-	vf->width = frame_width = READ_VREG(MREG_PIC_WIDTH);
-	vf->height = frame_height = READ_VREG(MREG_PIC_HEIGHT);
+	temp = READ_VREG(MREG_PIC_HEIGHT);
+	if (temp > 1088)
+		vf->height = frame_height = 1088;
+	else
+		vf->height = frame_height = temp;
+
 	vf->flag = 0;
 
 	if (frame_dur > 0)
@@ -303,7 +313,8 @@ static irqreturn_t vmpeg12_isr(int irq, void *dev_id)
 
 		if ((dec_control &
 			 DEC_CONTROL_FLAG_FORCE_2500_720_576_INTERLACE)
-			&& (frame_width == 720) && (frame_height == 576)
+			&& (frame_width == 720 || frame_width == 480)
+			&& (frame_height == 576)
 			&& (frame_dur == 3840))
 			frame_prog = 0;
 		else if ((dec_control &
@@ -328,7 +339,6 @@ static irqreturn_t vmpeg12_isr(int irq, void *dev_id)
 			frame_prog = 0;
 		else if (dec_control & DEC_CONTROL_FLAG_FORCE_SEQ_INTERLACE)
 			frame_prog = 0;
-
 		if (frame_prog & PICINFO_PROG) {
 			u32 index = ((reg & 0xf) - 1) & 7;
 

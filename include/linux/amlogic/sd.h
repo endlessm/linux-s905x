@@ -74,6 +74,13 @@ enum aml_host_bus_fsm { /* Host bus fsm status */
 	BUS_FSM_IRQ_SERVICE,	/* 8, wait for irq service */
 };
 
+enum aml_host_tuning_mode {
+	NONE_TUNING,
+	ADJ_TUNING_MODE,
+	AUTO_TUNING_MODE,
+	RX_PHASE_DELAY_TUNING_MODE,
+};
+
 struct amlsd_host;
 struct amlsd_platform {
 	struct amlsd_host *host;
@@ -111,29 +118,36 @@ struct amlsd_platform {
 	unsigned int irq_in_edge;
 	unsigned int irq_out;
 	unsigned int irq_out_edge;
+	struct mutex in_out_lock;
 	unsigned int gpio_cd;
 	unsigned int gpio_cd_level;
 	unsigned int gpio_power;
 	unsigned int power_level;
+	unsigned int auto_clk_close;
+	unsigned int vol_switch;
+	unsigned int vol_switch_18;
+	unsigned int vol_switch_delay;
 	char pinname[32];
 	unsigned int gpio_ro;
 	unsigned int gpio_dat3;
 	unsigned int hw_reset;
 	unsigned int jtag_pin;
 	int is_sduart;
+	unsigned int card_in_delay;
 	bool is_in;
 	bool is_tuned;		/* if card has been tuning */
 	bool need_retuning;
+	bool rmpb_cmd_flag;
+	bool rpmb_valid_command;
+	/* we used this flag to filter
+	some unnecessary cmd before initialized flow */
+	/* has been initialized for the first time */
+	bool is_fir_init;
 	struct delayed_work	retuning;
 #ifdef AML_CALIBRATION
 	unsigned char caling;
 	unsigned char calout[20][20];
 #endif
-	/* we used this flag to filter
-	some unnecessary cmd before initialized flow */
-
-	/* has been initialized for the first time */
-	bool is_fir_init;
 	/* 0:unknown, 1:mmc card(include eMMC), 2:sd card(include tSD),
 	3:sdio device(ie:sdio-wifi), 4:SD combo (IO+mem) card,
 	5:NON sdio device(means sd/mmc card), other:reserved */
@@ -219,6 +233,7 @@ struct amlsd_host {
 	dma_addr_t		dma_gping; /* 0x400 */
 	dma_addr_t		dma_gpong; /* 0x800 */
 	char is_tunning;
+	char tuning_mode;
 	unsigned int irq;
 	unsigned int irq_in;
 	unsigned int irq_out;

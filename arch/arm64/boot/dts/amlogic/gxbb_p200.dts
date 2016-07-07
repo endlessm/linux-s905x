@@ -206,6 +206,23 @@
                 clock-names = "ethclk81";
         };
 
+	pwm {
+		compatible = "amlogic, gx-pwm";
+		status = "okay";
+		pwm-outputs = <0>,<1>,<2>,<3>,<4>,<5>,<6>,<7>;
+		reg = <0x0 0xc1108550 0x0 0x30>,
+				<0x0 0xc8100550 0x0 0x10>;
+		clocks = <&clock CLK_XTAL>,
+				<&clock CLK_VID_PLL>,
+				<&clock CLK_FPLL_DIV4>,
+				<&clock CLK_FPLL_DIV3>;
+		clock-names = "xtal",
+				"vid_pll_clk",
+				"fclk_div4",
+				"fclk_div3";
+		clock-select = <0x0>,<0x0>,<0x0>,<0x0>,<0x3>,<0x0>,<0x0>,<0x0>;
+	};
+
 	mesonstream {
 		compatible = "amlogic, codec, streambuf";
 		dev_name = "mesonstream";
@@ -416,16 +433,20 @@
 	   		pinname = "sd";
 	   		ocr_avail = <0x00200080>; // 3.3:0x200000, 1.8+3.3:0x00200080
 	   		caps = "MMC_CAP_4_BIT_DATA","MMC_CAP_MMC_HIGHSPEED",
-					"MMC_CAP_SD_HIGHSPEED";
+					"MMC_CAP_SD_HIGHSPEED", "MMC_CAP_UHS_SDR12", "MMC_CAP_UHS_SDR25","MMC_CAP_UHS_SDR50";
 					//"MMC_CAP_UHS_SDR12",
 					//"MMC_CAP_UHS_SDR25","MMC_CAP_UHS_SDR50",
 					//"MMC_CAP_UHS_SDR104";
-	   		f_min = <400000>;
+			f_min = <400000>;
 	   		f_max = <100000000>;
 	   		max_req_size = <0x20000>;          /**128KB*/
 			gpio_dat3 = <&gpio       CARD_4       GPIO_ACTIVE_HIGH>;
 			jtag_pin =  <&gpio       CARD_0       GPIO_ACTIVE_HIGH>;
 			gpio_cd =  <&gpio       CARD_6       GPIO_ACTIVE_HIGH>;
+			/*if card have no switch gpio, remove all relative to vol_switch */
+			vol_switch =  <&gpio_ao       GPIOAO_5       GPIO_ACTIVE_HIGH>;
+			vol_switch_18 = <0>; /* 1 = high, 0 = low */
+			vol_switch_delay = <150>; /* Uint: ms*/
 	   		irq_in = <3>;
 	   		irq_out = <5>;
 	   		card_type = <5>; /* 0:unknown, 1:mmc card(include eMMC), 2:sd card(include tSD), 3:sdio device(ie:sdio-wifi), 4:SD combo (IO+mem) card, 5:NON sdio device(means sd/mmc card), other:reserved */
@@ -1023,16 +1044,42 @@
 		compatible = "amlogic, aml-thermal";
 		device_name = "thermal";
 		#thermal-sensor-cells = <1>;
-		cpu_dyn_coeff = <140>;
-		/* cpu_freq gpu_freq cpu_core gpu_core */
-		min_state = <1000000 400 1 2>;
-		gpu_dyn_coeff = <437>;
-	};
-	cpucore:thermal_cpu_cores {
-		#cooling-cells = <2>; /* min followed by max */
-	};
-	gpucore:thermal_gpu_cores {
-		#cooling-cells = <2>; /* min followed by max */
+		cooling_devices {
+			cpufreq_cool_cluster0 {
+				min_state = <1000000>;
+				dyn_coeff = <140>;
+				cluster_id = <0>;
+				node_name = "cpus";
+				device_type = "cpufreq";
+			};
+			cpucore_cool_cluster0 {
+				min_state = <1>;
+				dyn_coeff = <0>;
+				cluster_id = <0>;
+				node_name = "cpu_core_cluster0";
+				device_type = "cpucore";
+			};
+			gpufreq_cool {
+				min_state = <400>;
+				dyn_coeff = <437>;
+				cluster_id = <0>;
+				node_name = "mali";
+				device_type = "gpufreq";
+			};
+			gpucore_cool {
+				min_state = <1>;
+				dyn_coeff = <0>;
+				cluster_id = <0>;
+				node_name = "thermal_gpu_cores";
+				device_type = "gpucore";
+			};
+		};
+		cpu_cluster0:cpu_core_cluster0 {
+			#cooling-cells = <2>; /* min followed by max */
+		};
+		gpucore:thermal_gpu_cores {
+			#cooling-cells = <2>; /* min followed by max */
+		};
 	};
 	thermal-zones {
 		soc_thermal {
@@ -1073,7 +1120,7 @@
 				};
 				cpucore_cooling_map {
 					trip = <&control>;
-					cooling-device = <&cpucore 0 3>;
+					cooling-device = <&cpu_cluster0 0 3>;
 					contribution = <1024>;
 				};
 				gpufreq_cooling_map {
@@ -1131,6 +1178,9 @@
 };
 */
 
+&i2c_slave {
+	status = "disabled";
+};
 &pinmux {
 	audio_pins:audio_pin{
 		amlogic,setmask=<AO 0x78000000>;

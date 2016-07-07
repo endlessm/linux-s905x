@@ -633,6 +633,9 @@ unsigned int vlock_debug = 0;
 module_param(vlock_debug, uint, 0664);
 MODULE_PARM_DESC(vlock_debug, "\n vlock_debug\n");
 
+unsigned int contrast_adj_sel;/*0:vdj1, 1:vd1 mtx rgb contrast*/
+module_param(contrast_adj_sel, uint, 0664);
+MODULE_PARM_DESC(contrast_adj_sel, "\n contrast_adj_sel\n");
 
 
 /* *********************************************************************** */
@@ -1417,7 +1420,7 @@ void clash_fun(unsigned int *oMap, unsigned int *iHst,
 	/* the lowest bins */
 	nStp = tAvg * ve_dnlp_lowbin + 32;
 	nStp = (nStp >> 6);
-	for (j = 0; j < ve_dnlp_lowbin; j++) {
+	for (j = 0; j < ve_dnlp_lownum; j++) {
 		i = idx[tLen - 1 - j];
 
 		/* max */
@@ -1638,7 +1641,7 @@ static void clash_blend(void)
 				pgmma[j][i] = clash_curve[i];
 }
 
-int curve_rfrsh_chk(int hstSum)
+int curve_rfrsh_chk(int hstSum, int rbase)
 {
 	static unsigned int tLumAvg[30];
 	static unsigned int tAvgDif[30];
@@ -1674,8 +1677,8 @@ int curve_rfrsh_chk(int hstSum)
 	if (prt_flg)
 		pr_info("bld_lvl=%02d\n", bld_lvl);
 
-	if (bld_lvl > 64)
-		bld_lvl = 64;
+	if (bld_lvl > rbase)
+		bld_lvl = rbase;
 	else if (bld_lvl < ve_dnlp_cuvbld_min)
 		bld_lvl = ve_dnlp_cuvbld_min;
 	else if (bld_lvl > ve_dnlp_cuvbld_max)
@@ -2343,13 +2346,13 @@ static void ve_dnlp_calculate_tgtx_new(struct vframe_s *vf)
 	for (i = 0; i < 28; i++)
 		PreTstDat[i] = CrtTstDat[i];
 
-	dnlp_bld_lvl = curve_rfrsh_chk(hstSum);
+	dnlp_bld_lvl = curve_rfrsh_chk(hstSum, RBASE);
 	CrtTstDat[0] = dnlp_bld_lvl;
 
 	if (ve_dnlp_respond_flag) {
 		dnlp_bld_lvl = RBASE;
 		dnlp_scn_chg = 1;
-	} else if (dnlp_bld_lvl == 64) {
+	} else if (dnlp_bld_lvl >= RBASE) {
 		dnlp_bld_lvl = RBASE;
 		dnlp_scn_chg = 1;
 	}
@@ -4003,16 +4006,50 @@ void sharpness_process(struct vframe_s *vf)
 }
 /* sharpness process end */
 
-/*for gxbbtv contrast adj in vadj1*/
-void vpp_vd_adj1_contrast(signed int cont_val)
+/*for gxbbtv rgb contrast adj in vd1 matrix */
+void vpp_vd1_mtx_rgb_contrast(signed int cont_val)
 {
 	unsigned int vd1_contrast;
+	unsigned int vdj1_ctl;
+	if ((cont_val > 1023) || (cont_val < -1024))
+		return;
+	cont_val = cont_val + 1024;
+	/*VPP_VADJ_CTRL bit 1 on for rgb contrast adj*/
+	vdj1_ctl = READ_VPP_REG_BITS(XVYCC_VD1_RGB_CTRST, 1, 1);
+	if (!vdj1_ctl)
+		WRITE_VPP_REG_BITS(XVYCC_VD1_RGB_CTRST, 1, 1, 1);
+
+	vd1_contrast = (READ_VPP_REG(XVYCC_VD1_RGB_CTRST) & 0xf000ffff) |
+					(cont_val << 16);
+
+	WRITE_VPP_REG(XVYCC_VD1_RGB_CTRST, vd1_contrast);
+}
+
+/*for gxbbtv contrast adj in vadj1*/
+void vpp_vd_adj1_contrast(signed int cont_val, struct vframe_s *vf)
+{
+	unsigned int vd1_contrast;
+	unsigned int vdj1_ctl;
 	if ((cont_val > 1023) || (cont_val < -1024))
 		return;
 	cont_val = ((cont_val + 1024) >> 3);
+	/*VPP_VADJ_CTRL bit 1 off for contrast adj*/
+	vdj1_ctl = READ_VPP_REG_BITS(VPP_VADJ_CTRL, 1, 1);
+	if (vf->source_type == VFRAME_SOURCE_TYPE_OTHERS) {
+		if (!vdj1_ctl)
+			WRITE_VPP_REG_BITS(VPP_VADJ_CTRL, 1, 1, 1);
+	} else {
+		if (vdj1_ctl)
+			WRITE_VPP_REG_BITS(VPP_VADJ_CTRL, 0, 1, 1);
+	}
 
-	vd1_contrast = (READ_VPP_REG(VPP_VADJ1_Y) & 0xff00) |
-					(cont_val << 0);
+	if (get_cpu_type() > MESON_CPU_MAJOR_ID_GXTVBB) {
+		vd1_contrast = (READ_VPP_REG(VPP_VADJ1_Y) & 0x1ff00) |
+						(cont_val << 0);
+	} else {
+		vd1_contrast = (READ_VPP_REG(VPP_VADJ1_Y) & 0xff00) |
+						(cont_val << 0);
+	}
 	WRITE_VPP_REG(VPP_VADJ1_Y, vd1_contrast);
 }
 
@@ -4033,29 +4070,37 @@ void vpp_vd_adj1_brightness(signed int bri_val, struct vframe_s *vf)
 	if (bri_val > 1023 || bri_val < -1024)
 		return;
 
-	if ((vf->source_type == VFRAME_SOURCE_TYPE_TUNER) ||
-		(vf->source_type == VFRAME_SOURCE_TYPE_CVBS) ||
-		(vf->source_type == VFRAME_SOURCE_TYPE_COMP) ||
-		(vf->source_type == VFRAME_SOURCE_TYPE_HDMI))
-		vd1_brightness = bri_val;
-	else {
-		bri_val += ao0;
-		if (bri_val < -1024)
-			bri_val = -1024;
-		vd1_brightness = bri_val;
+	if (get_cpu_type() > MESON_CPU_MAJOR_ID_GXTVBB) {
+		bri_val = bri_val >> 1;
+		vd1_brightness = (READ_VPP_REG(VPP_VADJ1_Y) & 0xff) |
+			(bri_val << 8);
+
+		WRITE_VPP_REG(VPP_VADJ1_Y, vd1_brightness);
+	} else {
+		if ((vf->source_type == VFRAME_SOURCE_TYPE_TUNER) ||
+			(vf->source_type == VFRAME_SOURCE_TYPE_CVBS) ||
+			(vf->source_type == VFRAME_SOURCE_TYPE_COMP) ||
+			(vf->source_type == VFRAME_SOURCE_TYPE_HDMI))
+			vd1_brightness = bri_val;
+		else {
+			bri_val += ao0;
+			if (bri_val < -1024)
+				bri_val = -1024;
+			vd1_brightness = bri_val;
+		}
+
+		a01 = ((vd1_brightness << 16) & 0x0fff0000) |
+				((ao1 <<  0) & 0x00000fff);
+		a_2 = ((ao2 <<	0) & 0x00000fff);
+		/*p01 = ((po0 << 16) & 0x0fff0000) |*/
+				/*((po1 <<  0) & 0x00000fff);*/
+		/*p_2 = ((po2 <<	0) & 0x00000fff);*/
+
+		WRITE_VPP_REG(VPP_MATRIX_CTRL         , ctl);
+		WRITE_VPP_REG(VPP_MATRIX_PRE_OFFSET0_1, a01);
+		WRITE_VPP_REG(VPP_MATRIX_PRE_OFFSET2  , a_2);
+		WRITE_VPP_REG(VPP_MATRIX_CTRL         , ori);
 	}
-
-	a01 = ((vd1_brightness << 16) & 0x0fff0000) |
-			((ao1 <<  0) & 0x00000fff);
-	a_2 = ((ao2 <<	0) & 0x00000fff);
-	/*p01 = ((po0 << 16) & 0x0fff0000) |*/
-			/*((po1 <<  0) & 0x00000fff);*/
-	/*p_2 = ((po2 <<	0) & 0x00000fff);*/
-
-	WRITE_VPP_REG(VPP_MATRIX_CTRL         , ctl);
-	WRITE_VPP_REG(VPP_MATRIX_PRE_OFFSET0_1, a01);
-	WRITE_VPP_REG(VPP_MATRIX_PRE_OFFSET2  , a_2);
-	WRITE_VPP_REG(VPP_MATRIX_CTRL         , ori);
 }
 
 
@@ -4153,7 +4198,10 @@ void amvecm_bricon_process(unsigned int bri_val,
 
 	if (vecm_latch_flag & FLAG_VADJ1_CON) {
 		vecm_latch_flag &= ~FLAG_VADJ1_CON;
-		vpp_vd_adj1_contrast(cont_val);
+		if (contrast_adj_sel)
+			vpp_vd1_mtx_rgb_contrast(cont_val);
+		else
+			vpp_vd_adj1_contrast(cont_val, vf);
 		pr_amve_dbg("\n[amve..] set vd1_contrast OK!!!\n");
 	}
 

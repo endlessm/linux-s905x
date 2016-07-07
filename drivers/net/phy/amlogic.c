@@ -637,6 +637,15 @@ static int amlogic_phy_config_aneg(struct phy_device *phydev)
 
 	return genphy_config_aneg(phydev);
 }
+static int amlogic_phy_suspend(struct phy_device *phydev)
+{
+	uint8_t val;
+	/*enable 50M clock,or eth up will fail*/
+	aml_pmu4_read(0x7B, &val);
+	aml_pmu4_write(0x7B, val|0x4);
+	return genphy_suspend(phydev);
+}
+
 static struct phy_driver amlogic_phy_driver[] = {
 	{
 		.phy_id		= 0x79898963,
@@ -677,11 +686,75 @@ static struct phy_driver amlogic_phy_driver[] = {
 		.ack_interrupt	= &amlogic_phy_ack_interrupt,
 		.config_intr	= &amlogic_phy_config_intr,
 
-		.suspend	= genphy_suspend,
+		.suspend	= amlogic_phy_suspend,
 		.resume		= genphy_resume,
 
 		.driver		= { .owner = THIS_MODULE, }
 	} };
+static int internal_phy_read_status(struct phy_device *phydev)
+{
+	int err;
+	int reg31 = 0;
+
+	/* Update the link, but return if there was an error */
+	err = genphy_update_link(phydev);
+	if (err)
+		return err;
+
+	phydev->lp_advertising = 0;
+
+	if (AUTONEG_ENABLE == phydev->autoneg) {
+		reg31 = phy_read(phydev, 0x1f);
+		if (reg31 | 0x1000) {
+			phydev->pause = 0;
+			phydev->asym_pause = 0;
+			phydev->speed = SPEED_10;
+			phydev->duplex = DUPLEX_HALF;
+			reg31 &= 0x1c;
+			if (reg31 == 0x4) {
+				phydev->speed = SPEED_10;
+				phydev->duplex = DUPLEX_HALF;
+			}
+			if (reg31 == 0x14) {
+				phydev->speed = SPEED_10;
+				phydev->duplex = DUPLEX_FULL;
+
+			}
+			if (reg31 == 0x8) {
+				phydev->speed = SPEED_100;
+
+				phydev->duplex = DUPLEX_HALF;
+			}
+			if (reg31 == 0x18) {
+				phydev->speed = SPEED_100;
+				phydev->duplex = DUPLEX_FULL;
+			}
+
+		}
+	} else {
+		int bmcr = phy_read(phydev, MII_BMCR);
+
+		if (bmcr < 0)
+			return bmcr;
+
+		if (bmcr & BMCR_FULLDPLX)
+			phydev->duplex = DUPLEX_FULL;
+		else
+			phydev->duplex = DUPLEX_HALF;
+
+		if (bmcr & BMCR_SPEED1000)
+			phydev->speed = SPEED_1000;
+		else if (bmcr & BMCR_SPEED100)
+			phydev->speed = SPEED_100;
+		else
+			phydev->speed = SPEED_10;
+
+		phydev->pause = 0;
+		phydev->asym_pause = 0;
+	}
+
+	return 0;
+}
 
 static struct phy_driver internal_phy = {
 	.phy_id = 0x01814400,
@@ -690,7 +763,7 @@ static struct phy_driver internal_phy = {
 	.config_init	= internal_config_init,
 	.features	= 0,
 	.config_aneg	= genphy_config_aneg,
-	.read_status	= genphy_read_status,
+	.read_status	= internal_phy_read_status,
 	.suspend	= genphy_suspend,
 	.resume = internal_phy_resume,
 	.driver	= { .owner = THIS_MODULE, },

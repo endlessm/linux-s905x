@@ -68,6 +68,7 @@
 #define HDMIRX_ADDR_PORT	0xda83e000
 #define HDMIRX_DATA_PORT	0xda83e004
 #define HDMIRX_CTRL_PORT	0xda83e008
+#define TOP_INT_MASK_VALUE	0x000003fd
 
 static DEFINE_SPINLOCK(reg_rw_lock);
 
@@ -99,9 +100,24 @@ int md_ists_en = VIDEO_MODE;
 MODULE_PARM_DESC(md_ists_en, "\n rx_md_ists_en\n");
 module_param(md_ists_en, int, 0664);
 
+int pdec_ists_en = AVI_CKS_CHG | DVIDET;
+MODULE_PARM_DESC(pdec_ists_en, "\n pdec_ists_en\n");
+module_param(pdec_ists_en, int, 0664);
+
+/* note: generator AG506 cannot set true */
+static bool use_hw_avmute_ctl = true;
+MODULE_PARM_DESC(use_hw_avmute_ctl,
+	"\n use_hw_avmute_ctl\n");
+module_param(use_hw_avmute_ctl, bool, 0664);
+
+static bool phy_init_in_probe = true;
+MODULE_PARM_DESC(phy_init_in_probe,
+	"\n phy_init_in_probe\n");
+module_param(phy_init_in_probe, bool, 0664);
+
 /* bit5 pll_lck_chg_en */
 /* bit6 clk_change_en */
-int hdmi_ists_en = PLL_LCK_CHG | CLK_CHANGE;
+int hdmi_ists_en = AKSV_RCV;
 MODULE_PARM_DESC(hdmi_ists_en, "\n hdmi_ists_en\n");
 module_param(hdmi_ists_en, int, 0664);
 
@@ -124,6 +140,10 @@ static int hdcp_22_nonce_hw_en = 1;
 static int is_duk_key_set;
 MODULE_PARM_DESC(is_duk_key_set, "\n is_duk_key_set\n");
 module_param(is_duk_key_set, int, 0664);
+
+int force_hdcp14_en;
+MODULE_PARM_DESC(force_hdcp14_en, "\n force_hdcp14_en\n");
+module_param(force_hdcp14_en, int, 0664);
 #endif
 
 static int hdmi_mode_hyst = 5;
@@ -432,8 +452,10 @@ int hdmirx_irq_open(void)
 
 	hdmirx_wr_dwc(DWC_PDEC_IEN_SET, DRM_RCV_EN | DRM_CKS_CHG);
 	hdmirx_wr_dwc(DWC_AUD_FIFO_IEN_SET, OVERFL|UNDERFL);
+	if (hdcp_22_on)
+		hdmirx_wr_dwc(DWC_HDMI2_IEN_SET, 0x3f);
 	/*hdmirx_wr_dwc(DWC_MD_IEN_SET, rx_md_ists_en);*/
-	/*hdmirx_wr_dwc(DWC_HDMI_IEN_SET, hdmi_ists_en);*/
+	hdmirx_wr_dwc(DWC_HDMI_IEN_SET, hdmi_ists_en);
 
 	return error;
 }
@@ -493,8 +515,14 @@ static int packet_init(void)
 	data32 |= 0 << 0; /* checksum_err_filter */
 	hdmirx_wr_dwc(DWC_PDEC_ERR_FILTER, data32);
 
-	hdmirx_wr_dwc(DWC_PDEC_CTRL,
-		PFIFO_STORE_FILTER_EN|PD_FIFO_WE|PDEC_BCH_EN|GCP_GLOBAVMUTE);
+	if (use_hw_avmute_ctl)
+		hdmirx_wr_dwc(DWC_PDEC_CTRL,
+			PFIFO_STORE_FILTER_EN|PD_FIFO_WE|
+			PDEC_BCH_EN|GCP_GLOBAVMUTE);
+	else
+		hdmirx_wr_dwc(DWC_PDEC_CTRL,
+			PFIFO_STORE_FILTER_EN|PD_FIFO_WE|PDEC_BCH_EN);
+
 	hdmirx_wr_dwc(DWC_PDEC_ASP_CTRL,
 		AUTO_VMUTE|AUTO_SPFLAT_MUTE);
 	return error;
@@ -671,7 +699,7 @@ void hdmirx_set_hpd(int port, unsigned char val)
 			hdmirx_rd_top(TOP_HPD_PWR5V)|(1<<port));
 	}
 
-	if (log_flag & VIDEO_LOG)
+	if (log_flag & LOG_EN)
 		rx_print("%s, port:%d, val:%d\n", __func__,
 						port, val);
 }
@@ -682,7 +710,7 @@ void control_reset(void)
 
 	/* Enable functional modules */
 	data32  = 0;
-	data32 |= 0 << 5;   /* [5]      cec_enable */
+	data32 |= 1 << 5;   /* [5]      cec_enable */
 	data32 |= 1 << 4;   /* [4]      aud_enable */
 	data32 |= 1 << 3;   /* [3]      bus_enable */
 	data32 |= 1 << 2;   /* [2]      hdmi_enable */
@@ -692,7 +720,8 @@ void control_reset(void)
 
 	mdelay(1);
 	/* Reset functional modules */
-	hdmirx_wr_dwc(DWC_DMI_SW_RST,     0x0000007F);
+	hdmirx_wr_dwc(DWC_DMI_SW_RST,     0x0000003F);
+	cecrx_hw_init();
 }
 
 void hdmirx_set_pinmux(void)
@@ -740,7 +769,7 @@ void clk_init(void)
 	data32 |= 3 << 9;
 	data32 |= 1 << 8;
 	data32 |= 2 << 0;
-	/* wr_reg(HHI_HDMIRX_CLK_CNTL, data32); */
+	wr_reg(HHI_HDMIRX_CLK_CNTL, data32);
 
 	data32 = 0;
 	data32 |= 2	<< 25;
@@ -749,7 +778,8 @@ void clk_init(void)
 	data32 |= 2	<< 9;
 	data32 |= 1	<< 8;
 	data32 |= 2	<< 0;
-	/* wr_reg(HHI_HDMIRX_AUD_CLK_CNTL, data32); */
+	wr_reg(HHI_HDMIRX_AUD_CLK_CNTL, data32);
+
 #ifdef HDCP22_ENABLE
 	if (hdcp_22_on) {
 		/* Enable clk81_hdcp22_pclk */
@@ -833,8 +863,13 @@ void hdmirx_20_init(void)
 		/* (0x1002 | (hdcp_22_on<<2))); */
 		/* hdmirx_wr_dwc(DWC_HDCP_SETTINGS, 0x13374); */
 		/* Configure pkf[127:0] */
-		if (hdcp22_firmware_ok_flag)
+		if (hdcp22_firmware_ok_flag &&
+			(force_hdcp14_en == 0) &&
+			(esm_err_force_14 == 0))
 			hdmirx_wr_dwc(DWC_HDCP22_CONTROL, 0x1000);
+		else
+			hdmirx_wr_dwc(DWC_HDCP22_CONTROL, 2);
+
 		rx_sec_set_duk();
 		/* Validate PKF and DUK */
 			data32	= 0;
@@ -866,11 +901,14 @@ void hdmirx_hdcp22_esm_rst(void)
 void hdmirx_hdcp22_init(void)
 {
 	int ret = 0;
-
-	ret = rx_sec_set_duk();
+	if (1 == hdcp22_firmware_ok_flag)
+		ret = rx_sec_set_duk();
 
 	if (ret == 1) {
-		hdcp_22_on = 1;
+		if (force_hdcp14_en == 0)
+			hdcp_22_on = 1;
+		else
+			hdcp_22_on = 0;
 		/* hpd_to_esm = 1; */
 		is_duk_key_set = 1;
 		rx_print("hdcp22 on\n");
@@ -906,7 +944,7 @@ void hdmirx_hw_config(void)
 	hdmirx_packet_fifo_rst();
 	/*enable irq */
 	hdmirx_wr_top(TOP_INTR_STAT_CLR, ~0);
-	hdmirx_wr_top(TOP_INTR_MASKN, 0x00001fff);
+	hdmirx_wr_top(TOP_INTR_MASKN, TOP_INT_MASK_VALUE);
 	hdmirx_irq_open();
 
 	mdelay(100);
@@ -946,15 +984,21 @@ void hdmirx_hw_probe(void)
 	hdmirx_wr_top(TOP_SW_RESET,	0);
 	clk_init();
 	hdmirx_wr_top(TOP_EDID_GEN_CNTL, 0x1e109);
+	hdmirx_wr_top(TOP_HPD_PWR5V, 0x10);
 	hdmi_rx_ctrl_edid_update();
 	/* #ifdef HDCP22_ENABLE */
 	/* if (hdcp_22_on) */
 	/*	hpd_to_esm = 1; */
 	/* #endif */
+	mdelay(150);
+	if (phy_init_in_probe)
+		hdmirx_phy_init(0, 0);
+
+	hdmirx_wr_top(TOP_HPD_PWR5V, 0x1f);
 	hdmirx_hdcp22_init();
 	hdmirx_wr_top(TOP_PORT_SEL, 0x10);
 	hdmirx_wr_top(TOP_INTR_STAT_CLR, ~0);
-	hdmirx_wr_top(TOP_INTR_MASKN, 0x00001fff);
+	hdmirx_wr_top(TOP_INTR_MASKN, TOP_INT_MASK_VALUE);
 	rx_print("%s Done!\n", __func__);
 }
 
@@ -1020,8 +1064,8 @@ int hdmirx_get_video_info(struct hdmi_rx_ctrl *ctx,
 	/* DVI mode */
 	params->dvi = hdmirx_rd_bits_dwc(DWC_PDEC_STS, DVIDET) != 0;
 	/* hdcp encrypted state */
-	params->hdcp_enc_state = (hdmirx_rd_bits_dwc(DWC_HDCP_STS,
-		ENCRYPTED_STATUS) != 0);
+	params->hdcp_enc_state = (hdmirx_rd_dwc(DWC_HDCP_STS) >> 8) & 3;
+
 	/* AVI parameters */
 	error |= hdmirx_packet_get_avi(params);
 	if (error != 0)
@@ -1335,7 +1379,7 @@ void hdmirx_read_audio_info(struct aud_info_s *audio_info)
 		hdmirx_rd_bits_dwc(DWC_PDEC_AIF_PB1, DWNMIX_INHIBIT);
 	audio_info->level_shift_value =
 		hdmirx_rd_bits_dwc(DWC_PDEC_AIF_PB1, LEVEL_SHIFT_VAL);
-	audio_info->audio_samples_packet_received =
+	audio_info->aud_packet_received =
 		hdmirx_rd_bits_dwc(DWC_PDEC_AUD_STS, AUDS_RCV);
 
 	audio_info->cts = hdmirx_rd_dwc(DWC_PDEC_ACR_CTS);

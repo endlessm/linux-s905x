@@ -1014,9 +1014,22 @@ void aml_cs_dont_care(struct amlsd_platform *pdata) /* chip select don't care */
 
 static int aml_is_card_insert(struct amlsd_platform *pdata)
 {
-	int ret = 0;
-	if (pdata->gpio_cd)
-		ret = gpio_get_value(pdata->gpio_cd);
+	int ret = 0, in_count = 0, out_count = 0, i;
+	if (pdata->gpio_cd) {
+		mdelay(pdata->card_in_delay);
+		for (i = 0; i < 200; i++) {
+			ret = gpio_get_value(pdata->gpio_cd);
+			if (ret)
+				out_count++;
+			in_count++;
+			if ((out_count > 100) || (in_count > 100))
+				break;
+		}
+		if (out_count > 100)
+			ret = 1;
+		else if (in_count > 100)
+			ret = 0;
+	}
 	sdio_err("card %s\n", ret?"OUT":"IN");
 	if (!pdata->gpio_cd_level)
 		ret = !ret; /* reverse, so ---- 0: no inserted  1: inserted */
@@ -1186,7 +1199,7 @@ static void aml_jtag_switch_sd(struct amlsd_platform *pdata)
 			break;
 		mdelay(1);
 	}
-	if (get_jtag_select() == JTAG_A53_EE) {
+	if (is_jtag_apee()) {
 		jtag_select_sd();
 		pr_info("setup apee\n");
 	}
@@ -1268,23 +1281,34 @@ int aml_sd_uart_detect(struct amlsd_platform *pdata)
 	return 0;
 }
 
+/*u32 cd_irq_cnt[2] = {0, 0}; //debug*/
+static int card_dealed;
 irqreturn_t aml_irq_cd_thread(int irq, void *data)
 {
 	struct amlsd_platform *pdata = (struct amlsd_platform *)data;
-	int card_dealing = 0;
-
-	mdelay(20);
-	card_dealing = aml_sd_uart_detect(pdata);
-	if (card_dealing == 1)
+	int ret = 0;
+	/* cd_irq_cnt[(irq == 99)] ++; //debug */
+	mutex_lock(&pdata->in_out_lock);
+	if (card_dealed == 1) {
+		card_dealed = 0;
+		mutex_unlock(&pdata->in_out_lock);
 		return IRQ_HANDLED;
+	}
+	ret = aml_sd_uart_detect(pdata);
+	if (ret == 1) {/* the same as the last*/
+		mutex_unlock(&pdata->in_out_lock);
+		return IRQ_HANDLED;
+	}
+	card_dealed = 1;
 	if ((pdata->is_in == 0) && aml_card_type_non_sdio(pdata))
 		pdata->host->init_flag = 0;
+	mutex_unlock(&pdata->in_out_lock);
 	/* mdelay(500); */
-	if (pdata->is_in == 0)
-		mmc_detect_change(pdata->mmc, msecs_to_jiffies(2));
+	if (pdata->is_in)
+		mmc_detect_change(pdata->mmc, msecs_to_jiffies(100));
 	else
-		mmc_detect_change(pdata->mmc, msecs_to_jiffies(500));
-
+		mmc_detect_change(pdata->mmc, msecs_to_jiffies(0));
+	card_dealed = 0;
 	return IRQ_HANDLED;
 }
 
@@ -1322,6 +1346,21 @@ static int aml_cmd_invalid(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	return -EINVAL;
 }
+static int aml_rpmb_cmd_invalid(struct mmc_host *mmc, struct mmc_request *mrq)
+{
+	struct amlsd_platform *pdata = mmc_priv(mmc);
+	struct amlsd_host *host = pdata->host;
+	unsigned long flags;
+
+	spin_lock_irqsave(&host->mrq_lock, flags);
+	host->xfer_step = XFER_FINISHED;
+	host->mrq = NULL;
+	host->status = HOST_INVALID;
+	spin_unlock_irqrestore(&host->mrq_lock, flags);
+	mrq->data->bytes_xfered = mrq->data->blksz*mrq->data->blocks;
+	mmc_request_done(mmc, mrq);
+	return -EINVAL;
+}
 
 int aml_check_unsupport_cmd(struct mmc_host *mmc, struct mmc_request *mrq)
 {
@@ -1339,6 +1378,24 @@ int aml_check_unsupport_cmd(struct mmc_host *mmc, struct mmc_request *mrq)
 	/* CMD3 means the first time initialized flow is running */
 	if (mrq->cmd->opcode == 3)
 		mmc->first_init_flag = false;
+
+	if (aml_card_type_mmc(pdata)) {
+		if (mrq->cmd->opcode == 6) {
+			if (mrq->cmd->arg == 0x3B30301)
+				pdata->rmpb_cmd_flag = 1;
+			else
+				pdata->rmpb_cmd_flag = 0;
+		}
+		if (pdata->rmpb_cmd_flag && (!pdata->rpmb_valid_command)) {
+			if ((mrq->cmd->opcode == 18)
+				|| (mrq->cmd->opcode == 25))
+				return aml_rpmb_cmd_invalid(mmc, mrq);
+		}
+		if (pdata->rmpb_cmd_flag && (mrq->cmd->opcode == 23))
+			pdata->rpmb_valid_command = 1;
+		else
+			pdata->rpmb_valid_command = 0;
+	}
 
 	if (mmc->caps & MMC_CAP_NONREMOVABLE) { /* nonremovable device */
 	if (mmc->first_init_flag) { /* init for the first time */
@@ -1382,60 +1439,39 @@ int aml_check_unsupport_cmd(struct mmc_host *mmc, struct mmc_request *mrq)
 
 int aml_sd_voltage_switch(struct amlsd_platform *pdata, char signal_voltage)
 {
-#if ((defined CONFIG_ARCH_MESON8))
-#ifdef CONFIG_AMLOGIC_BOARD_HAS_PMU
-	int vol = LDO4DAC_REG_3_3_V;
-	int delay_ms = 0;
-	char *str;
-	struct aml_pmu_driver *pmu_driver;
-
-	/* only SDHC_B support voltage switch */
-	if ((pdata->port != PORT_SDHC_B)
-		|| (pdata->signal_voltage == signal_voltage))
-		return 0; /* voltage is the same, return directly */
-
-	pmu_driver = aml_pmu_get_driver();
-	if (pmu_driver == NULL) {
-		sdhc_err("no pmu driver\n");
-		return -EINVAL;
-	} else if (pmu_driver->pmu_reg_write) {
-		switch (signal_voltage) {
-
-		case MMC_SIGNAL_VOLTAGE_180:
-			vol = LDO4DAC_REG_1_8_V;
-			delay_ms = 20;
-			str = "1.80 V";
-
-			if (!mmc_host_uhs(pdata->mmc))
-				sdhc_err("switch to 1.8V for a non-uhs device.\n");
-
-			break;
-		case MMC_SIGNAL_VOLTAGE_330:
-			vol = LDO4DAC_REG_3_3_V;
-			delay_ms = 20;
-			str = "3.30 V";
-			break;
-		/*we don't support 1.2V now */
-		case MMC_SIGNAL_VOLTAGE_120:
-			str = "1.20 V";
-			break;
-		default:
-			str = "invalid";
-			break;
-		}
-
-		 /* set voltage */
-		pmu_driver->pmu_reg_write(LDO4DAC_REG_ADDR, vol);
-		pdata->signal_voltage = signal_voltage;
-		mdelay(delay_ms); /* wait for voltage to be stable */
-		sdhc_dbg(AMLSD_DBG_COMMON, "voltage: %s\n", str);
-		/* sdhc_err("delay %dms.\n", delay_ms); */
-	}
-#endif
-#endif
 	struct amlsd_host *host = pdata->host;
-	if (!aml_card_type_mmc(pdata))
-		host->sd_sdio_switch_volat_done = 1;
+	int ret = 0;
+
+	/* voltage is the same, return directly */
+	if (!aml_card_type_non_sdio(pdata)
+		|| (pdata->signal_voltage == signal_voltage)) {
+		if (aml_card_type_sdio(pdata))
+			host->sd_sdio_switch_volat_done = 1;
+			return 0;
+	}
+	if (pdata->vol_switch) {
+		if (pdata->signal_voltage == 0xff) {
+			gpio_free(pdata->vol_switch);
+			ret = gpio_request_one(pdata->vol_switch,
+					GPIOF_OUT_INIT_HIGH, MODULE_NAME);
+			if (ret) {
+				pr_err("%s [%d] request error\n",
+						__func__, __LINE__);
+				return -EINVAL;
+			}
+		}
+		if (signal_voltage == MMC_SIGNAL_VOLTAGE_180)
+			ret = gpio_direction_output(pdata->vol_switch,
+						pdata->vol_switch_18);
+		else
+			ret = gpio_direction_output(pdata->vol_switch,
+					(!pdata->vol_switch_18));
+		CHECK_RET(ret);
+		pdata->signal_voltage = signal_voltage;
+	} else
+		return -EINVAL;
+
+	host->sd_sdio_switch_volat_done = 1;
 	return 0;
 }
 

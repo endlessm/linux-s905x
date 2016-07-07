@@ -170,23 +170,23 @@ static void cvbs_cntl_output(unsigned int open)
 	if (open == 0) { /* close */
 		cntl0 = 0;
 		cntl1 = 8;
-		tv_out_hiu_write(HHI_VDAC_CNTL0, cntl0);
-		tv_out_hiu_write(HHI_VDAC_CNTL1, cntl1);
+		vdac_set_ctrl0_ctrl1(cntl0, cntl1);
 
 		/* must enable adc bandgap, the adc ref signal for demod */
-		ana_ref_cntl0_bit9(0, 0x8);
-		vdac_out_cntl1_bit3(0, 0x8);
+		vdac_enable(0, 0x8);
 	} else if (open == 1) { /* open */
-		cntl0 = 0x1;
+		if (is_meson_gxl_cpu() ||
+			is_meson_gxm_cpu())
+			cntl0 = 0xf0001;
+		else
+			cntl0 = 0x1;
 		cntl1 = (vdac_cfg_valid == 0) ? 0 : vdac_cfg_value;
 		vout_log_info("vdac open.%d = 0x%x, 0x%x\n",
 			      vdac_cfg_valid, cntl0, cntl1);
-		tv_out_hiu_write(HHI_VDAC_CNTL1, cntl1);
-		tv_out_hiu_write(HHI_VDAC_CNTL0, cntl0);
+		vdac_set_ctrl0_ctrl1(cntl0, cntl1);
 
-		/* must enable adc bandgap, the adc ref signal for demod */
-		ana_ref_cntl0_bit9(1, 0x8);
-		vdac_out_cntl1_bit3(1, 0x8);
+		/*vdac ctrl for cvbsout/rf signal,adc bandgap*/
+		vdac_enable(1, 0x8);
 	}
 	return;
 }
@@ -206,6 +206,7 @@ static void cvbs_performance_enhancement(enum tvmode_e mode)
 	unsigned int max = 0;
 	unsigned int type = 0;
 	const struct reg_s *s = NULL;
+
 	if (TVMODE_576CVBS != mode)
 		return;
 	if (0xff == index)
@@ -229,7 +230,6 @@ static void cvbs_performance_enhancement(enum tvmode_e mode)
 		s = tvregs_576cvbs_performance_m8[index];
 		type = 3;
 	} else if ((check_cpu_type(MESON_CPU_MAJOR_ID_GXBB)) ||
-			   (check_cpu_type(MESON_CPU_MAJOR_ID_GXL)) ||
 			   (check_cpu_type(MESON_CPU_MAJOR_ID_GXM))) {
 		max = sizeof(tvregs_576cvbs_performance_gxbb)
 			/ sizeof(struct reg_s *);
@@ -242,6 +242,19 @@ static void cvbs_performance_enhancement(enum tvmode_e mode)
 		index = (index >= max) ? 0 : index;
 		s = tvregs_576cvbs_performance_gxtvbb[index];
 		type = 5;
+	} else if (is_meson_gxl_package_905X() ||
+		is_meson_gxm_cpu()) {
+		max = sizeof(tvregs_576cvbs_performance_905x)
+			/ sizeof(struct reg_s *);
+		index = (index >= max) ? 0 : index;
+		s = tvregs_576cvbs_performance_905x[index];
+		type = 6;
+	} else if (is_meson_gxl_package_905L()) {
+		max = sizeof(tvregs_576cvbs_performance_905l)
+			/ sizeof(struct reg_s *);
+		index = (index >= max) ? 0 : index;
+		s = tvregs_576cvbs_performance_905l[index];
+		type = 7;
 	}
 
 	vout_log_info("cvbs performance type = %d, table = %d\n", type, index);
@@ -514,6 +527,9 @@ int tv_out_setmode(enum tvmode_e mode)
 
 	tv_out_set_clk_gate(mode);
 	tv_out_init_off(mode);
+	/* Before setting clk for CVBS, disable ENCP/I to avoid hungup */
+	tv_out_reg_write(ENCP_VIDEO_EN, 0);
+	tv_out_reg_write(ENCI_VIDEO_EN, 0);
 	tv_out_set_clk(mode);
 	ret = tv_out_set_venc(mode);
 	if (ret) {
@@ -556,6 +572,7 @@ static const struct vinfo_s *get_valid_vinfo(char  *mode)
 	struct vinfo_s *vinfo = NULL;
 	int  i, count = ARRAY_SIZE(tv_info);
 	int mode_name_len = 0;
+
 	for (i = 0; i < count; i++) {
 		if (strncmp(tv_info[i].name, mode,
 			    strlen(tv_info[i].name)) == 0) {
@@ -567,7 +584,7 @@ static const struct vinfo_s *get_valid_vinfo(char  *mode)
 		}
 	}
 	if (vinfo)
-		strncpy(vinfo->ext_name, mode, strlen(mode));
+		strcpy(vinfo->ext_name, mode);
 	return vinfo;
 }
 
@@ -592,6 +609,8 @@ static struct vinfo_s *get_tv_info(enum vmode_e mode)
 }
 
 #ifdef CONFIG_AML_VOUT_FRAMERATE_AUTOMATION
+static enum fine_tune_mode_e fine_tune_mode = KEEP_HPLL;
+
 /* for hdmi (un)plug during fps automation */
 static int want_hdmi_mode(enum vmode_e mode)
 {
@@ -636,6 +655,26 @@ static int want_hdmi_mode(enum vmode_e mode)
 /* if plug hdmi during fps (stream is playing), then adjust mode to fps vmode */
 static void fps_auto_adjust_mode(enum vmode_e *pmode)
 {
+	/* mode_by_user is set as the current
+		display/mode when framerate_auto is
+		actived, so if the pmode is not equal
+		to mode_by_user, then we think the
+		application set a different resolution,
+		then we close framerate process and change
+		to the pmode.
+		if pmode is equal to mode_by_user, then we
+		think the following two event maybe occur,
+		and then they set hdmi mode again:
+			1. hdmi plug out/in
+			2. suspend/resume
+	*/
+
+	if (*pmode != mode_by_user) {
+		fine_tune_mode = KEEP_HPLL;
+		mode_by_user = *pmode;
+		fps_target_mode = *pmode;
+	}
+
 	if (fps_playing_flag == 1) {
 		if (want_hdmi_mode(*pmode) == 1) {
 			if ((hdmitx_is_vmode_supported_process(
@@ -651,7 +690,6 @@ static void fps_auto_adjust_mode(enum vmode_e *pmode)
 	}
 }
 
-static enum fine_tune_mode_e fine_tune_mode = KEEP_HPLL;
 #endif
 
 static int tv_out_enci_is_required(enum vmode_e mode)
@@ -1032,6 +1070,7 @@ static int framerate_automation_set_mode(
 {
 	const struct vinfo_s *pvinfo;
 	enum vmode_e mode_current = VMODE_INIT_NULL;
+
 	if ((mode_target&VMODE_MODE_BIT_MASK) > VMODE_MAX)
 		return 1;
 	pvinfo = tv_get_current_info();
@@ -1328,6 +1367,41 @@ static void dump_clk_registers(void)
 	return;
 }
 
+static void cvbs_performance_regs_dump(void)
+{
+	unsigned int performance_regs_enci[] = {
+			VENC_VDAC_DAC0_GAINCTRL,
+			ENCI_SYNC_ADJ,
+			ENCI_VIDEO_BRIGHT,
+			ENCI_VIDEO_CONT,
+			ENCI_VIDEO_SAT,
+			ENCI_VIDEO_HUE,
+			ENCI_YC_DELAY,
+			VENC_VDAC_DAC0_FILT_CTRL0,
+			VENC_VDAC_DAC0_FILT_CTRL1
+		};
+	unsigned int performance_regs_vdac[] = {
+			HHI_VDAC_CNTL0,
+			HHI_VDAC_CNTL1
+		};
+	int i, size;
+
+	size = sizeof(performance_regs_enci)/sizeof(unsigned int);
+	pr_info("------------------------\n");
+	for (i = 0; i < size; i++) {
+		pr_info("vcbus [0x%x] = 0x%x\n", performance_regs_enci[i],
+			tv_out_reg_read(performance_regs_enci[i]));
+	}
+
+	size = sizeof(performance_regs_vdac)/sizeof(unsigned int);
+	pr_info("------------------------\n");
+	for (i = 0; i < size; i++) {
+		pr_info("hiu [0x%x] = 0x%x\n", performance_regs_vdac[i],
+			tv_out_hiu_read(performance_regs_vdac[i]));
+	}
+	pr_info("------------------------\n");
+}
+
 enum {
 	CMD_REG_READ,
 	CMD_REG_READ_BITS,
@@ -1339,6 +1413,16 @@ enum {
 	CMD_CLK_MSR,
 
 	CMD_BIST,
+
+	/* config a set of performance parameters:
+		0 for sarft,
+		1 for telecom,
+		2 for chinamobile
+	*/
+	CMD_VP_SET,
+
+	/* get the current perfomance config */
+	CMD_VP_GET,
 
 	CMD_HELP,
 
@@ -1409,6 +1493,10 @@ static void cvbs_debug_store(char *buf)
 		cmd = CMD_CLK_MSR;
 	else if (!strncmp(argv[0], "bist", strlen("bist")))
 		cmd = CMD_BIST;
+	else if (!strncmp(argv[0], "vpset", strlen("vpset")))
+		cmd = CMD_VP_SET;
+	else if (!strncmp(argv[0], "vpget", strlen("vpget")))
+		cmd = CMD_VP_GET;
 	else if (!strncmp(argv[0], "help", strlen("help")))
 		cmd = CMD_HELP;
 	else {
@@ -1533,6 +1621,24 @@ static void cvbs_debug_store(char *buf)
 		}
 
 		bist_test_store(argv[1]);
+		break;
+
+	case CMD_VP_SET:
+		if (argc != 2) {
+			print_info("[%s] cmd_vp_set format:\n"
+			"\tvpset 0/1/2\n", __func__);
+			goto DEBUG_END;
+		}
+		ret = kstrtoul(argv[1], 16, &value);
+		cvbs_performance_index = (value > 2) ? 0 : value;
+		cvbs_performance_enhancement(info->vinfo->mode);
+		cvbs_performance_regs_dump();
+		break;
+
+	case CMD_VP_GET:
+		print_info("current performance index: %d\n",
+			cvbs_performance_index);
+		cvbs_performance_regs_dump();
 		break;
 
 	case CMD_HELP:

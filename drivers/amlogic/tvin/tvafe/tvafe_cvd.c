@@ -129,7 +129,7 @@ static int force_fmt_flag;
 static unsigned int scene_colorful = 1;
 static int scene_colorful_old;
 static int auto_de_en = 1;
-
+static int lock_cnt;
 static unsigned int cvd_reg8a = 0xa;
 
 module_param(auto_de_en, int, 0664);
@@ -266,6 +266,10 @@ static int dg_ave_last = 0x200;
 static unsigned int try_format_max = 5;
 module_param(try_format_max, uint, 0664);
 MODULE_PARM_DESC(try_format_max, "try_format_max");
+
+static unsigned int acd_h_config = 0x8e035e;
+module_param(acd_h_config, uint, 0664);
+MODULE_PARM_DESC(acd_h_config, "acd_h_config");
 
 static unsigned int try_format_cnt;
 
@@ -769,7 +773,7 @@ inline void tvafe_cvd2_try_format(struct tvafe_cvd2_s *cvd2,
 	}
 
 	if (fmt != cvd2->config_fmt) {
-
+		lock_cnt = 0;
 		pr_info("[tvafe..] %s: try new fmt:%s\n",
 				__func__, tvin_sig_fmt_str(fmt));
 		cvd2->config_fmt = fmt;
@@ -1100,13 +1104,18 @@ enum tvafe_cvbs_video_e tvafe_cvd2_get_lock_status(
 
 	if (!cvd2->hw.h_lock && !cvd2->hw.v_lock)
 		cvbs_lock_status = TVAFE_CVBS_VIDEO_HV_UNLOCKED;
-	else if (cvd2->hw.h_lock && cvd2->hw.v_lock)
+	else if (cvd2->hw.h_lock && cvd2->hw.v_lock) {
 		cvbs_lock_status = TVAFE_CVBS_VIDEO_HV_LOCKED;
-	else if (cvd2->hw.h_lock)
+		lock_cnt++;
+	} else if (cvd2->hw.h_lock) {
 		cvbs_lock_status = TVAFE_CVBS_VIDEO_H_LOCKED;
-	else if (cvd2->hw.v_lock)
+		lock_cnt++;
+	} else if (cvd2->hw.v_lock) {
 		cvbs_lock_status = TVAFE_CVBS_VIDEO_V_LOCKED;
-
+		lock_cnt++;
+	}
+	if (lock_cnt >= 1)
+		cvbs_lock_status = TVAFE_CVBS_VIDEO_HV_LOCKED;
 	return cvbs_lock_status;
 }
 
@@ -2013,14 +2022,15 @@ inline bool tvafe_cvd2_no_sig(struct tvafe_cvd2_s *cvd2,
 	static bool ret;
 	static int time_flag;
 
-	/* get signal status from HW */
 	tvafe_cvd2_get_signal_status(cvd2);
 
-	time_flag++;
 	/*TVAFE register status need more time to be stable.
-	for 30ms delay.*/
-	if (time_flag%3 != 0)
+	for double time delay.*/
+	time_flag++;
+	if (time_flag%2 != 0)
 		return ret;
+
+	/* get signal status from HW */
 
 	/* search video mode */
 	tvafe_cvd2_search_video_mode(cvd2, mem);
@@ -2521,4 +2531,27 @@ void tvafe_cvd2_set_reg8a(unsigned int v)
 	W_APB_REG(CVD2_CHROMA_LOOPFILTER_STATE, cvd_reg8a);
 }
 
+void tvafe_snow_config(unsigned int onoff)
+{
+	if (onoff) {
+		W_APB_BIT(CVD2_OUTPUT_CONTROL, 3, BLUE_MODE_BIT, BLUE_MODE_WID);
+	} else {
+		W_APB_BIT(CVD2_OUTPUT_CONTROL, 0, BLUE_MODE_BIT, BLUE_MODE_WID);
+	}
+}
+
+void tvafe_snow_config_clamp(unsigned int onoff)
+{
+	if (onoff)
+		W_APB_BIT(TVFE_ATV_DMD_CLP_CTRL, 0, 20, 1);
+	else
+		W_APB_BIT(TVFE_ATV_DMD_CLP_CTRL, 1, 20, 1);
+}
+
+void tvafe_snow_config_acd(void)
+{
+	/*0x900360 is debug test result*/
+	if (acd_h_config)
+		W_APB_REG(ACD_REG_2D, acd_h_config);
+}
 

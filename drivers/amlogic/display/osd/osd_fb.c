@@ -970,9 +970,11 @@ static int osd_open(struct fb_info *info, int arg)
 	fix = &info->fix;
 	var = &info->var;
 	if (fb_rmem.base == 0) {
+		pr_info("use ion buffer for fb memory\n");
 		if (!fb_ion_client)
 			fb_ion_client = meson_ion_client_create(-1, "meson-fb");
 		if (fb_index == DEV_OSD0 && osd_get_afbc()) {
+			pr_info("OSD0 as afbcd mode\n");
 			for (j = 0; j < OSD_MAX_BUF_NUM; j++) {
 				fb_ion_handle[fb_index][j] =
 				ion_alloc(fb_ion_client,
@@ -1112,7 +1114,7 @@ static int osd_open(struct fb_info *info, int arg)
 			fb_index, fbdev->fb_mem_vaddr);
 		memset(fbdev->fb_mem_vaddr, 0x0, fbdev->fb_len);
 		if (fb_index == DEV_OSD0 && osd_get_afbc()) {
-			for (j = 0; j < OSD_MAX_BUF_NUM; j++) {
+			for (j = 1; j < OSD_MAX_BUF_NUM; j++) {
 				osd_log_info(
 					"---------------clear fb%d memory %p\n",
 					fb_index,
@@ -1134,9 +1136,11 @@ static int osd_open(struct fb_info *info, int arg)
 		/* setup osd if not logo layer */
 		osddev_setup(fbdev);
 	} else {
-		memset(fb_rmem_vaddr[fb_index],
+		/* memset(fb_rmem_vaddr[fb_index],
 				0x0,
-				fb_rmem_size[fb_index]);
+				fb_rmem_size[fb_index]); */
+		osd_log_info("fb%d open, logo index:%d\n",
+			fb_index, logo_index);
 	}
 	return 0;
 }
@@ -2149,6 +2153,32 @@ static ssize_t store_ver_update_pan(struct device *device,
 	return count;
 }
 
+static ssize_t show_reset_status(struct device *device,
+	struct device_attribute *attr, char *buf)
+{
+	u32 status = osd_get_reset_status();
+
+	return snprintf(buf, PAGE_SIZE, "0x%x\n", status);
+}
+
+static ssize_t free_scale_switch(struct device *device,
+	struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+	struct fb_info *fb_info = dev_get_drvdata(device);
+	u32 res = 0;
+	int ret = 0;
+	unsigned int free_scale_enable = 0;
+	ret = kstrtoint(buf, 0, &res);
+	free_scale_enable = res;
+	osd_switch_free_scale(
+		(fb_info->node == DEV_OSD0) ? DEV_OSD1 : DEV_OSD0,
+		0, 0, fb_info->node, 1, free_scale_enable);
+	osd_log_info("free_scale_switch to fb%d, mode: 0x%x\n",
+		fb_info->node, free_scale_enable);
+	return count;
+}
+
 static inline  int str2lower(char *str)
 {
 	while (*str != '\0') {
@@ -2317,11 +2347,16 @@ static struct device_attribute osd_attrs[] = {
 			show_ver_angle, store_ver_angle),
 	__ATTR(ver_clone, S_IRUGO | S_IWUSR,
 			show_ver_clone, store_ver_clone),
-	__ATTR(ver_update_pan, S_IWUGO | S_IWUSR, NULL, store_ver_update_pan),
+	__ATTR(ver_update_pan, S_IWUGO | S_IWUSR,
+			NULL, store_ver_update_pan),
 	__ATTR(osd_afbcd, S_IRUGO | S_IWUSR | S_IWGRP,
 			show_afbcd, store_afbcd),
 	__ATTR(osd_clear, S_IWUSR | S_IWGRP,
 			NULL, osd_clear),
+	__ATTR(reset_status, S_IRUGO | S_IRUSR,
+			show_reset_status, NULL),
+	__ATTR(free_scale_switch, S_IWUSR | S_IWGRP,
+			NULL, free_scale_switch),
 };
 
 #ifdef CONFIG_PM
@@ -2416,6 +2451,16 @@ static int osd_restore(struct device *dev)
 {
 	osd_restore_hw();
 	return 0;
+}
+static int osd_pm_suspend(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	return osd_suspend(pdev, PMSG_SUSPEND);
+}
+static int osd_pm_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	return osd_resume(pdev);
 }
 #endif
 
@@ -2716,6 +2761,8 @@ const struct dev_pm_ops osd_pm = {
 	.freeze		= osd_freeze,
 	.thaw		= osd_thaw,
 	.restore	= osd_restore,
+	.suspend	= osd_pm_suspend,
+	.resume		= osd_pm_resume,
 };
 #endif
 

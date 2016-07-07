@@ -70,6 +70,8 @@ static int sm_print_notsup;
 static int sm_print_unstable;
 static int sm_print_fmt_nosig;
 static int sm_print_fmt_chg;
+static int sm_atv_prestable_fmt;
+static int sm_print_prestable;
 
 module_param(sm_debug_enable, bool, 0664);
 MODULE_PARM_DESC(sm_debug_enable,
@@ -96,9 +98,31 @@ static int hdmi_stable_out_cnt = 1;/* 25; */
 module_param(hdmi_stable_out_cnt, int, 0664);
 MODULE_PARM_DESC(hdmi_stable_out_cnt, "hdmi_stable_out_cnt");
 
-static int atv_stable_out_cnt = 10;
+/* new add in gxtvbb@20160523,reason:
+ *gxtvbb add atv snow config,the config will affect signal detect.
+ *if atv_stable_out_cnt < 100,the signal state will change
+ *after swich source to atv or after atv search*/
+static int atv_stable_out_cnt = 100;
 module_param(atv_stable_out_cnt, int, 0664);
 MODULE_PARM_DESC(atv_stable_out_cnt, "atv_stable_out_cnt");
+
+/* new add in gxtvbb@20160613,reason:
+ *gxtvbb add atv snow config,the config will affect signal detect.
+ *ensure after fmt change,the new fmt can be detect in time!*/
+static int atv_stable_fmt_check_cnt = 10;
+module_param(atv_stable_fmt_check_cnt, int, 0664);
+MODULE_PARM_DESC(atv_stable_fmt_check_cnt, "atv_stable_fmt_check_cnt");
+
+/* new add in gxtvbb@20160613,reason:
+ * ensure vdin fmt can update when fmt is changed in menu*/
+static int atv_stable_fmt_check_enable;
+
+/* new add in gxtvbb@20160523,reason:
+ *gxtvbb add atv snow config,the config will affect signal detect.
+ *ensure after prestable into stable,the state is really stable!*/
+static int atv_prestable_out_cnt = 100;
+module_param(atv_prestable_out_cnt, int, 0664);
+MODULE_PARM_DESC(atv_prestable_out_cnt, "atv_prestable_out_cnt");
 
 static int other_stable_out_cnt = EXIT_STABLE_MAX_CNT;
 module_param(other_stable_out_cnt, int, 0664);
@@ -144,6 +168,8 @@ static void hdmirx_color_fmt_handler(struct vdin_dev_s *devp)
 	enum tvin_port_e port = TVIN_PORT_NULL;
 	enum tvin_color_fmt_e cur_color_fmt, pre_color_fmt;
 	struct tvin_sig_property_s *prop, *pre_prop;
+	unsigned int vdin_hdr_flag, pre_vdin_hdr_flag;
+	unsigned int vdin_fmt_range, pre_vdin_fmt_range;
 
 	if (!devp || !devp->frontend) {
 		sm_dev[devp->index].state = TVIN_SM_STATUS_NULL;
@@ -165,7 +191,16 @@ static void hdmirx_color_fmt_handler(struct vdin_dev_s *devp)
 		cur_color_fmt = prop->color_format;
 		pre_color_fmt = pre_prop->color_format;
 
-		if (cur_color_fmt != pre_color_fmt) {
+		vdin_hdr_flag = prop->vdin_hdr_Flag;
+		pre_vdin_hdr_flag = pre_prop->vdin_hdr_Flag;
+
+		vdin_fmt_range = prop->color_fmt_range;
+		pre_vdin_fmt_range = pre_prop->color_fmt_range;
+
+		if ((cur_color_fmt != pre_color_fmt) ||
+			(vdin_hdr_flag != pre_vdin_hdr_flag) ||
+			(vdin_fmt_range != pre_vdin_fmt_range)
+			) {
 			pr_info("[smr.%d] color fmt(%d->%d),csc_cfg:0x%x\n",
 					devp->index,
 					pre_color_fmt, cur_color_fmt,
@@ -200,6 +235,8 @@ void tvin_smr(struct vdin_dev_s *devp)
 	struct tvin_frontend_s *fe;
 	struct tvin_sig_property_s *prop, *pre_prop;
 
+	if (devp->flags & VDIN_FLAG_SM_DISABLE)
+		return;
 	if (!devp || !devp->frontend) {
 		sm_dev[devp->index].state = TVIN_SM_STATUS_NULL;
 		return;
@@ -217,6 +254,8 @@ void tvin_smr(struct vdin_dev_s *devp)
 	switch (sm_p->state) {
 	case TVIN_SM_STATUS_NOSIG:
 		++sm_p->state_cnt;
+		if (port == TVIN_PORT_CVBS3)
+			tvafe_snow_config_clamp(1);
 		if (sm_ops->nosig(devp->frontend)) {
 			sm_p->exit_nosig_cnt = 0;
 			if (sm_p->state_cnt >= nosig_in_cnt) {
@@ -227,7 +266,7 @@ void tvin_smr(struct vdin_dev_s *devp)
 					queue_delayed_work(devp->sig_wq,
 						&devp->sig_dwork, 0);
 				}
-				info->fmt           = TVIN_SIG_FMT_NULL;
+				info->fmt = TVIN_SIG_FMT_NULL;
 				if (sm_debug_enable && !sm_print_nosig) {
 					pr_info("[smr.%d] no signal\n",
 							devp->index);
@@ -348,6 +387,7 @@ void tvin_smr(struct vdin_dev_s *devp)
 						sm_ops->fmt_config(fe);
 					tvin_smr_init_counter(devp->index);
 					sm_p->state = TVIN_SM_STATUS_PRESTABLE;
+					sm_atv_prestable_fmt = info->fmt;
 					if (sm_debug_enable) {
 						pr_info("[smr.%d]unstable-->prestable",
 						devp->index);
@@ -359,30 +399,42 @@ void tvin_smr(struct vdin_dev_s *devp)
 					sm_print_unstable = 0;
 					sm_print_fmt_nosig = 0;
 					sm_print_fmt_chg = 0;
+					sm_print_prestable = 0;
 				}
 			}
 		}
 		break;
 	case TVIN_SM_STATUS_PRESTABLE: {
 		bool nosig = false, fmt_changed = false;
+		unsigned int prestable_out_cnt = 0;
 		devp->unstable_flag = true;
+		if (port == TVIN_PORT_CVBS3)
+			tvafe_snow_config_clamp(0);
 		if (sm_ops->nosig(devp->frontend)) {
 			nosig = true;
-			if (sm_debug_enable)
+			if (sm_debug_enable && !(sm_print_prestable&0x1)) {
 				pr_info("[smr.%d] warning: no signal\n",
 						devp->index);
+				sm_print_prestable |= 1;
+			}
 		}
 
 		if (sm_ops->fmt_changed(devp->frontend)) {
 			fmt_changed = true;
-			if (sm_debug_enable)
+			if (sm_debug_enable && !(sm_print_prestable&0x2)) {
 				pr_info("[smr.%d] warning: format changed\n",
 						devp->index);
+				sm_print_prestable |= (1<<1);
+			}
 		}
 
 		if (nosig || fmt_changed) {
 			++sm_p->state_cnt;
-			if (sm_p->state_cnt >= other_stable_out_cnt) {
+			if (port == TVIN_PORT_CVBS3)
+				prestable_out_cnt = atv_prestable_out_cnt;
+			else
+				prestable_out_cnt = other_stable_out_cnt;
+			if (sm_p->state_cnt >= prestable_out_cnt) {
 				tvin_smr_init_counter(devp->index);
 				sm_p->state = TVIN_SM_STATUS_UNSTABLE;
 				if (sm_debug_enable)
@@ -391,30 +443,42 @@ void tvin_smr(struct vdin_dev_s *devp)
 				sm_print_nosig  = 0;
 				sm_print_notsup = 0;
 				sm_print_unstable = 0;
-
+				sm_print_prestable = 0;
 				break;
 			}
-		} else
+		} else {
 			sm_p->state_cnt = 0;
 
-		sm_p->state = TVIN_SM_STATUS_STABLE;
-		info->status = TVIN_SIG_STATUS_STABLE;
-		if (pre_info->status != info->status) {
-			pre_info->status = info->status;
-			queue_delayed_work(devp->sig_wq,
-					&devp->sig_dwork, 0);
+			if (port == TVIN_PORT_CVBS3) {
+				++sm_p->exit_prestable_cnt;
+				if (sm_p->exit_prestable_cnt <
+					atv_prestable_out_cnt)
+					break;
+				else
+					sm_p->exit_prestable_cnt = 0;
+			}
+
+			sm_p->state = TVIN_SM_STATUS_STABLE;
+			info->status = TVIN_SIG_STATUS_STABLE;
+			if (pre_info->status != info->status) {
+				pre_info->status = info->status;
+				queue_delayed_work(devp->sig_wq,
+						&devp->sig_dwork, 0);
+			}
+			if (sm_debug_enable)
+				pr_info("[smr.%d] %ums prestable --> stable\n",
+						devp->index,
+						jiffies_to_msecs(jiffies));
+			sm_print_nosig  = 0;
+			sm_print_notsup = 0;
+			sm_print_prestable = 0;
 		}
-		if (sm_debug_enable)
-			pr_info("[smr.%d] %ums prestable --> stable\n",
-					devp->index,
-					jiffies_to_msecs(jiffies));
-		sm_print_nosig  = 0;
-		sm_print_notsup = 0;
 		break;
 	}
 	case TVIN_SM_STATUS_STABLE: {
 		bool nosig = false, fmt_changed = false;
 		unsigned int stable_out_cnt = 0;
+		unsigned int stable_fmt = 0;
 		devp->unstable_flag = true;
 
 		if (sm_ops->nosig(devp->frontend)) {
@@ -455,19 +519,53 @@ void tvin_smr(struct vdin_dev_s *devp)
 				stable_out_cnt = hdmi_stable_out_cnt;
 			else
 				stable_out_cnt = other_stable_out_cnt;
+			/*add for atv snow*/
+			if ((sm_p->state_cnt >= atv_stable_fmt_check_cnt) &&
+				(port == TVIN_PORT_CVBS3))
+				atv_stable_fmt_check_enable = 1;
 			if (sm_p->state_cnt >= stable_out_cnt) {
 				tvin_smr_init_counter(devp->index);
 				sm_p->state = TVIN_SM_STATUS_UNSTABLE;
 				if (sm_debug_enable)
 					pr_info("[smr.%d] stable --> unstable\n",
-							devp->index);
+						devp->index);
 				sm_print_nosig  = 0;
 				sm_print_notsup = 0;
 				sm_print_unstable = 0;
 				sm_print_fmt_nosig = 0;
 				sm_print_fmt_chg = 0;
+				sm_print_prestable = 0;
+				atv_stable_fmt_check_enable = 0;
 			}
 		} else {
+			/*add for atv snow*/
+			if ((port == TVIN_PORT_CVBS3) &&
+				atv_stable_fmt_check_enable &&
+				(sm_ops->get_fmt && sm_ops->get_sig_propery)) {
+				sm_p->state_cnt = 0;
+				stable_fmt =
+					sm_ops->get_fmt(fe);
+				if ((sm_atv_prestable_fmt != stable_fmt) &&
+					(stable_fmt != TVIN_SIG_FMT_NULL)) {
+					sm_ops->get_sig_propery(fe, prop);
+					memcpy(pre_prop, prop,
+					sizeof(struct tvin_sig_property_s));
+					devp->parm.info.trans_fmt =
+						prop->trans_fmt;
+					devp->parm.info.reserved =
+						prop->dvi_info & 0xf;
+					devp->parm.info.fps =
+						prop->dvi_info >> 4;
+					info->fmt = stable_fmt;
+					atv_stable_fmt_check_enable = 0;
+					if (sm_debug_enable)
+						pr_info("[smr.%d] stable fmt changed:0x%x-->0x%x\n",
+							devp->index,
+							sm_atv_prestable_fmt,
+							stable_fmt);
+					sm_atv_prestable_fmt = stable_fmt;
+				}
+			}
 			sm_p->state_cnt = 0;
 		}
 		break;

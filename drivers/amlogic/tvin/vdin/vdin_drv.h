@@ -50,7 +50,7 @@
 #include "vdin_vf.h"
 #include "vdin_regs.h"
 
-#define VDIN_VER "Ref.2016/04/25a"
+#define VDIN_VER "Ref.2016/06/17a"
 
 /*the counter of vdin*/
 #define VDIN_MAX_DEVS			2
@@ -74,6 +74,10 @@
 #define VDIN_FLAG_MANUAL_CONVERTION     0x00001000
 /*flag for vdin rdma enable*/
 #define VDIN_FLAG_RDMA_ENABLE           0x00002000
+/*flag for vdin snow on&off*/
+#define VDIN_FLAG_SNOW_FLAG             0x00004000
+/*flag for disable vdin sm*/
+#define VDIN_FLAG_SM_DISABLE            0x00008000
 /*values of vdin isr bypass check flag */
 #define VDIN_BYPASS_STOP_CHECK          0x00000001
 #define VDIN_BYPASS_CYC_CHECK           0x00000002
@@ -87,6 +91,12 @@
 /* size for rdma table */
 #define RDMA_TABLE_SIZE (PAGE_SIZE>>3)
 /* #define VDIN_DEBUG */
+
+/*vdin write mem color-depth support*/
+#define VDIN_WR_COLOR_DEPTH_8BIT	1
+#define VDIN_WR_COLOR_DEPTH_9BIT	(1 << 1)
+#define VDIN_WR_COLOR_DEPTH_10BIT	(1 << 2)
+#define VDIN_WR_COLOR_DEPTH_12BIT	(1 << 3)
 
 static inline const char *vdin_fmt_convert_str(
 		enum vdin_format_convert_e fmt_cvt)
@@ -237,6 +247,19 @@ struct vdin_dev_s {
 	unsigned int            csc_cfg;
 	/* duration of current timing */
 	unsigned int			duration;
+	/* color-depth for vdin write */
+	/*vdin write mem color depth support:
+	*bit0:support 8bit
+	*bit1:support 9bit
+	*bit2:support 10bit
+	*bit3:support 12bit*/
+	unsigned int			color_depth_support;
+	/*color depth config
+	*0:auto config as frontend
+	*8:force config as 8bit
+	*10:force config as 10bit
+	*12:force config as 12bit*/
+	unsigned int			color_depth_config;
 };
 
 
@@ -248,6 +271,7 @@ int vdin_ctrl_start_fe(int no, struct vdin_parm_s *para);
 int vdin_ctrl_stop_fe(int no);
 enum tvin_sig_fmt_e vdin_ctrl_get_fmt(int no);
 #endif
+extern unsigned int max_buf_num;
 extern unsigned int   vdin_ldim_max_global[100];
 extern struct vframe_provider_s *vf_get_provider_by_name(
 		const char *provider_name);
@@ -273,5 +297,11 @@ extern void LDIM_Initial(int pic_h, int pic_v, int BLK_Vnum,
 	int BLK_Hnum, int BackLit_mode, int ldim_bl_en, int ldim_hvcnt_bypass);
 extern void ldim_get_matrix(int *data, int reg_sel);
 extern void ldim_set_matrix(int *data, int reg_sel);
+extern void tvafe_snow_config(unsigned int onoff);
+extern void tvafe_snow_config_clamp(unsigned int onoff);
+extern void vdin_vf_reg(struct vdin_dev_s *devp);
+extern void vdin_vf_unreg(struct vdin_dev_s *devp);
+extern void vdin_pause_dec(struct vdin_dev_s *devp);
+extern void vdin_resume_dec(struct vdin_dev_s *devp);
 #endif /* __TVIN_VDIN_DRV_H */
 

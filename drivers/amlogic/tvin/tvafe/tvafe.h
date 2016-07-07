@@ -23,11 +23,12 @@
 /* ************************************************* */
 /* *** macro definitions ********************************************* */
 /* *********************************************************** */
-#define TVAFE_VER "Ref.2015/04/21"
+#define TVAFE_VER "Ref.2015/06/01b"
 
 /* used to set the flag of tvafe_dev_s */
 #define TVAFE_FLAG_DEV_OPENED       0x00000010
 #define TVAFE_FLAG_DEV_STARTED      0x00000020
+#define TVAFE_FLAG_DEV_SNOW_FLAG    0x00000040
 #define TVAFE_POWERDOWN_IN_IDLE
 
 /************************************************************ */

@@ -256,13 +256,16 @@ EXPORT_SYMBOL(get_logo_vmode);
 
 int set_logo_vmode(enum vmode_e mode)
 {
+	const char *tmp;
+	char name[32] = {0};
 	int ret = 0;
 
 	if (mode == VMODE_INIT_NULL)
 		return -1;
-
+	tmp = vmode_mode_to_name(mode);
+	strncpy(&name[0], tmp, 32);
 	vout_init_vmode = mode;
-	set_current_vmode(mode);
+	set_vout_mode(name);
 
 	return ret;
 }
@@ -430,6 +433,16 @@ static int  meson_vout_restore(struct device *dev)
 
 	return 0;
 }
+static int meson_vout_pm_suspend(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	return meson_vout_suspend(pdev, PMSG_SUSPEND);
+}
+static int meson_vout_pm_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	return meson_vout_resume(pdev);
+}
 #endif
 
 #ifdef CONFIG_SCREEN_ON_EARLY
@@ -520,6 +533,8 @@ const struct dev_pm_ops vout_pm = {
 	.freeze		= meson_vout_freeze,
 	.thaw		= meson_vout_thaw,
 	.restore	= meson_vout_restore,
+	.suspend	= meson_vout_pm_suspend,
+	.resume		= meson_vout_pm_resume,
 };
 #endif
 

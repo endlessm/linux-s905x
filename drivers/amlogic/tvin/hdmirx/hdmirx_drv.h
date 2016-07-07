@@ -27,7 +27,7 @@
 #include "../tvin_format_table.h"
 #include "../tvin_frontend.h"
 
-#define HDMIRX_VER "Ref.2016/04/21"
+#define HDMIRX_VER "Ref.2016/06/23"
 
 #define HDMI_STATE_CHECK_FREQ     (20*5)
 #define ABS(x) ((x) < 0 ? -(x) : (x))
@@ -35,7 +35,7 @@
 #define	LOG_EN		0x01
 #define VIDEO_LOG	0x02
 #define AUDIO_LOG	0x04
-#define PHY_LOG		0x08
+#define HDCP_LOG	0x08
 #define PACKET_LOG	0x10
 #define CEC_LOG		0x20
 #define REG_LOG		0x40
@@ -64,6 +64,10 @@ struct hdmirx_dev_s {
 #define HDMI_IOC_HDCP_ON	_IO(HDMI_IOC_MAGIC, 0x01)
 #define HDMI_IOC_HDCP_OFF	_IO(HDMI_IOC_MAGIC, 0x02)
 #define HDMI_IOC_EDID_UPDATE	_IO(HDMI_IOC_MAGIC, 0x03)
+#define HDMI_IOC_PC_MODE_ON		_IO(HDMI_IOC_MAGIC, 0x04)
+#define HDMI_IOC_PC_MODE_OFF	_IO(HDMI_IOC_MAGIC, 0x05)
+#define HDMI_IOC_HDCP22_AUTO	_IO(HDMI_IOC_MAGIC, 0x06)
+#define HDMI_IOC_HDCP22_FORCE14 _IO(HDMI_IOC_MAGIC, 0x07)
 
 #define HDMI_IOC_HDCP_GET_KSV _IOR(HDMI_IOC_MAGIC, 0x09, struct _hdcp_ksv)
 
@@ -128,6 +132,7 @@ enum HDMI_Video_Type {
 	HDMI_720p120  = 47,
 
 	HDMI_720p24   = 60,
+	HDMI_720p25   = 61,
 	HDMI_720p30   = 62,
 	HDMI_1080p120 = 63,
 	HDMI_800_600  = 65,
@@ -167,8 +172,9 @@ enum fsm_states_e {
 	FSM_HDMI5V_HIGH,
 	FSM_HPD_READY,
 	FSM_EQ_CALIBRATION,
-	FSM_TIMINGCHANGE,
+	FSM_PHY_RST,
 	FSM_WAIT_CLK_STABLE,
+	FSM_WAIT_HDCP_SWITCH,
 	FSM_SIG_UNSTABLE,
 	FSM_DWC_RST_WAIT,
 	FSM_SIG_STABLE,
@@ -177,6 +183,19 @@ enum fsm_states_e {
 	FSM_WAIT_AUDIO_STABLE,
 	FSM_PHY_RESET,
 	FSM_DWC_RESET,
+};
+
+enum repeater_state_e {
+	REPEATER_STATE_WAIT_KSV,
+	REPEATER_STATE_WAIT_ACK,
+	REPEATER_STATE_IDLE,
+	REPEATER_STATE_START,
+};
+
+enum hdcp_version_e {
+	HDCP_VERSION_NONE,
+	HDCP_VERSION_14,
+	HDCP_VERSION_22,
 };
 
 /** Configuration clock minimum [kHz] */
@@ -217,7 +236,7 @@ struct hdmi_rx_phy {
 struct hdmi_rx_ctrl_video {
 	/** DVI detection status: DVI (true) or HDMI (false) */
 	bool dvi;
-	bool hdcp_enc_state;
+	int hdcp_enc_state;
 	/** Deep color mode: 24, 30, 36 or 48 [bits per pixel] */
 	unsigned deep_color_mode;
 
@@ -333,14 +352,19 @@ struct hdmi_rx_ctrl {
  * @short HDMI RX controller HDCP configuration
  */
 struct hdmi_rx_ctrl_hdcp {
+	/*hdcp auth state*/
+	enum repeater_state_e state;
 	/** Repeater mode else receiver only */
 	bool repeat;
+	bool cascade_exceed;
+	bool dev_exceed;
 	/*downstream depth*/
 	unsigned char depth;
 	/*downstream count*/
 	uint32_t count;
 	/** Key description seed */
 	uint32_t seed;
+	uint32_t delay;/*according to the timer,5s*/
 	/**
 	 * Receiver key selection
 	 * @note 0: high order, 1: low order
@@ -351,6 +375,8 @@ struct hdmi_rx_ctrl_hdcp {
 	 * @note 0: high order, 1: low order
 	 */
 	uint32_t keys[HDCP_KEYS_SIZE];
+	struct switch_dev switch_hdcp_auth;
+	enum hdcp_version_e hdcp_version;/* 0 no hdcp;1 hdcp14;2 hdcp22 */
 };
 
 #define CHANNEL_STATUS_SIZE   24
@@ -371,7 +397,7 @@ struct aud_info_s {
 	int channel_allocation;
 	int down_mix_inhibit;
 	int level_shift_value;
-	int audio_samples_packet_received;
+	int aud_packet_received;
 
 	/* channel status */
 	unsigned char channel_status[CHANNEL_STATUS_SIZE];
@@ -404,6 +430,8 @@ struct rx_s {
 	struct hdmi_rx_ctrl ctrl;
 	/** HDMI RX controller HDCP configuration */
 	struct hdmi_rx_ctrl_hdcp hdcp;
+	/*report hpd status to app*/
+	struct switch_dev hpd_sdev;
 
 	/* wrapper */
 	unsigned int state;
@@ -434,7 +462,7 @@ struct rx_s {
 	struct vendor_specific_info_s vendor_specific_info;
 	struct tvin_hdr_data_s hdr_data;
 	bool open_fg;
-	bool scdc_tmds_cfg;
+	unsigned char scdc_tmds_cfg;
 	unsigned int pwr_sts;
 };
 
@@ -549,6 +577,7 @@ extern int md_ists_en;
 extern int hdmi_ists_en;
 extern int real_port_map;
 extern bool hpd_to_esm;
+extern bool video_stable_to_esm;
 extern bool hdcp_enable;
 extern int it_content;
 extern struct rx_s rx;
@@ -557,7 +586,7 @@ extern unsigned char is_alternative(void);
 extern unsigned char is_frame_packing(void);
 extern void clk_init(void);
 extern void clk_off(void);
-
+extern void set_scdc_cfg(int hpdlow, int pwrprovided);
 extern int hdmirx_print_flag;
 extern bool irq_ctrl_reg_en; /* enable/disable reg rd/wr in irq  */
 
@@ -566,6 +595,11 @@ extern int yuv_quant_range;
 extern int hdcp_22_on;
 extern int do_esm_rst_flag;
 extern int hdcp22_firmware_ok_flag;
+extern int force_hdcp14_en;
+extern int pre_port;
+extern int esm_err_force_14;
+extern int pc_mode_en;
+extern int do_hpd_reset_flag;
 
 unsigned int rd_reg(unsigned int addr);
 void wr_reg(unsigned int addr, unsigned int val);
@@ -601,7 +635,7 @@ uint32_t get(uint32_t data, uint32_t mask);
 uint32_t set(uint32_t data, uint32_t mask, uint32_t value);
 int rx_set_receiver_edid(unsigned char *data, int len);
 int rx_set_hdr_lumi(unsigned char *data, int len);
-bool rx_set_receive_hdcp(unsigned char *data, int len, int depth);
+bool rx_set_receive_hdcp(unsigned char *data, int len, int depth, bool , bool);
 void rx_repeat_hpd_state(bool plug);
 void rx_repeat_hdcp_ver(int version);
 void rx_edid_physical_addr(int a, int b, int c, int d);
@@ -616,7 +650,7 @@ void hdmirx_hw_config(void);
 void hdcp22_hw_cfg(void);
 void hdmirx_hw_reset(void);
 void hdmirx_hw_probe(void);
-void hdmi_rx_load_edid_data(unsigned char *buffer);
+void hdmi_rx_load_edid_data(unsigned char *buffer, int port);
 int hdmi_rx_ctrl_edid_update(void);
 void hdmirx_set_hpd(int port, unsigned char val);
 bool hdmirx_repeat_support(void);
@@ -679,5 +713,8 @@ extern void hdmirx_check_new_edid(void);
 
 extern void hdmirx_plug_det(struct work_struct *work);
 extern void hdmirx_wait_query(void);
+extern bool hdmirx_tmds_34g(void);
 
+extern int cec_has_irq(void);
+extern void cecrx_hw_init(void);
 #endif  /* _TVHDMI_H */

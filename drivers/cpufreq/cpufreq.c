@@ -1408,6 +1408,7 @@ static int __cpufreq_remove_dev_finish(struct device *dev,
 
 	/* If cpu is last user of policy, free policy */
 	if (cpus == 1) {
+		up_write(&policy->rwsem);
 		if (has_target()) {
 			ret = __cpufreq_governor(policy,
 					CPUFREQ_GOV_POLICY_EXIT);
@@ -1436,6 +1437,7 @@ static int __cpufreq_remove_dev_finish(struct device *dev,
 
 		if (!frozen)
 			cpufreq_policy_free(policy);
+		down_write(&policy->rwsem);
 	} else {
 		if (has_target()) {
 			if ((ret = __cpufreq_governor(policy, CPUFREQ_GOV_START)) ||
@@ -1491,7 +1493,7 @@ static void __ref handle_up_cpu(struct work_struct *work)
 	for (i = 0; i < num_possible_cpus(); i++) {
 		if (cpu_online(i))
 			continue;
-		cpu_up(i);
+		device_online(get_cpu_device(i));
 	}
 }
 #endif

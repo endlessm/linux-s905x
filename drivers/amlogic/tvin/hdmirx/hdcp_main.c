@@ -43,7 +43,7 @@
 
 /* #include "../hw/mach_reg.h" */
 #ifdef HDCP22_ENABLE
-#define ESM_DEVICE_MAJOR   58
+#define ESM_DEVICE_MAJOR   60
 #define MAX_ESM_DEVICES    6
 
 /* ESM Device */
@@ -69,8 +69,8 @@ static int verbose;
 
 /* Constant strings */
 static const char *MY_TAG = "ESM HLD: ";
-static const char *ESM_DEVICE_NAME = "esm";
-static const char *ESM_DEVICE_CLASS = "elliptic";
+static const char *ESM_DEVICE_NAME = "esm_rx";
+static const char *ESM_DEVICE_CLASS = "elliptic_rx";
 
 /* Linux device, class and range */
 static int device_created;
@@ -103,6 +103,9 @@ static long cmd_load_code(struct esm_device *esm,
 		pr_info("%scmd_load_code: code=%p code_size=0x%x\n",
 		MY_TAG, krequest.code, krequest.code_size);
 	}
+
+	if (do_esm_rst_flag == 1)
+			esm->code_loaded = 0;
 
 	if (esm->code_loaded == 1) {
 		pr_info("%scmd_load_code: Code already loaded.\n", MY_TAG);
@@ -156,9 +159,11 @@ static long cmd_load_code(struct esm_device *esm,
 		sizeof(struct esm_hld_ioctl_load_code));
 	if (ret)
 		pr_info("copy left %ld Bytes\n", ret);
+	#if 0
 	if (do_esm_rst_flag == 1)
 		esm->code_loaded = 0;
 	else
+	#endif
 		esm->code_loaded = (krequest.returned_status ==
 		ESM_HL_DRIVER_SUCCESS);
 	return 0;
@@ -179,6 +184,9 @@ static long cmd_load_code32(struct esm_device *esm,
 	r |= get_user(krequest.code_size, &uf->code_size);
 	if (r)
 		return -EFAULT;
+
+	if (do_esm_rst_flag == 1)
+			esm->code_loaded = 0;
 
 	if (esm->code_loaded == 1) {
 		pr_info("%scmd_load_code: Code already loaded.\n", MY_TAG);
@@ -232,9 +240,12 @@ static long cmd_load_code32(struct esm_device *esm,
 		sizeof(struct compact_esm_hld_ioctl_load_code));
 	if (ret)
 		pr_info("copy left %ld Bytes\n", ret);
-	if (do_esm_rst_flag == 1)
-		esm->code_loaded = 0;
-	else
+
+	#if 0
+		if (do_esm_rst_flag == 1)
+			esm->code_loaded = 0;
+		else
+	#endif
 		esm->code_loaded = (krequest.returned_status ==
 		ESM_HL_DRIVER_SUCCESS);
 

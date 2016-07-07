@@ -266,6 +266,7 @@ static void set_hpll_clk_out(unsigned clk)
 		set_gxtvbb_hpll_clk_out(clk);
 		break;
 	case MESON_CPU_MAJOR_ID_GXL:
+	case MESON_CPU_MAJOR_ID_GXM:
 		set_gxl_hpll_clk_out(clk);
 		break;
 	}
@@ -275,7 +276,7 @@ static void set_hpll_clk_out(unsigned clk)
 
 static void set_hpll_od1(unsigned div)
 {
-	if (get_cpu_type() == MESON_CPU_MAJOR_ID_GXL) {
+	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXL) {
 		switch (div) {
 		case 1:
 			hd_set_reg_bits(P_HHI_HDMI_PLL_CNTL3, 0, 21, 2);
@@ -314,7 +315,7 @@ static void set_hpll_od1(unsigned div)
 
 static void set_hpll_od2(unsigned div)
 {
-	if (get_cpu_type() == MESON_CPU_MAJOR_ID_GXL) {
+	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXL) {
 		switch (div) {
 		case 1:
 			hd_set_reg_bits(P_HHI_HDMI_PLL_CNTL3, 0, 23, 2);
@@ -353,7 +354,7 @@ static void set_hpll_od2(unsigned div)
 
 static void set_hpll_od3(unsigned div)
 {
-	if (get_cpu_type() == MESON_CPU_MAJOR_ID_GXL) {
+	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXL) {
 		switch (div) {
 		case 1:
 			hd_set_reg_bits(P_HHI_HDMI_PLL_CNTL3, 0, 19, 2);
@@ -672,3 +673,28 @@ next:
 	set_encp_div(p_enc[j].encp_div);
 	set_enci_div(p_enc[j].enci_div);
 }
+
+int hdmitx_fine_tune_hpll(enum fine_tune_mode_e mode)
+{
+	static unsigned int save_div_frac;
+
+	if (mode == DOWN_HPLL) {
+		save_div_frac = hd_read_reg(P_HHI_HDMI_PLL_CNTL2);
+		if (is_meson_gxl_cpu() || is_meson_gxm_cpu()) {
+			if ((save_div_frac & 0xfff) == 0x300)
+				hd_set_reg_bits(P_HHI_HDMI_PLL_CNTL2,
+					0x280 , 0, 11);
+			else if ((save_div_frac & 0xfff) == 0x200)
+				hd_set_reg_bits(P_HHI_HDMI_PLL_CNTL2,
+					0x100 , 0, 11);
+		} else
+			hd_set_reg_bits(P_HHI_HDMI_PLL_CNTL2,
+				0xd03 , 0, 11);
+	} else if (mode == UP_HPLL) {
+		hd_set_reg_bits(P_HHI_HDMI_PLL_CNTL2,
+		save_div_frac&0xfff , 0, 11);
+	}
+
+	return 0;
+}
+

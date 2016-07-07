@@ -458,6 +458,10 @@ static int ppmgr_receiver_event_fun(int type, void *data, void *private_data)
 		PPMGRVPP_WARN("register now\n");
 #endif
 		vf_ppmgr_reg_provider();
+		vf_notify_receiver(
+				PROVIDER_NAME,
+				VFRAME_EVENT_PROVIDER_START,
+				NULL);
 		break;
 	case VFRAME_EVENT_PROVIDER_UNREG:
 #ifdef DDD
@@ -587,6 +591,7 @@ void vf_ppmgr_init_provider(void)
 
 static inline struct vframe_s *ppmgr_vf_peek_dec(void)
 {
+#if 0
 	struct vframe_provider_s *vfp;
 	struct vframe_s *vf;
 	vfp = vf_get_provider(RECEIVER_NAME);
@@ -595,10 +600,15 @@ static inline struct vframe_s *ppmgr_vf_peek_dec(void)
 
 	vf = vfp->ops->peek(vfp->op_arg);
 	return vf;
+#else
+	return vf_peek(RECEIVER_NAME);
+#endif
 }
 
 static inline struct vframe_s *ppmgr_vf_get_dec(void)
 {
+#if 0
+
 	struct vframe_provider_s *vfp;
 	struct vframe_s *vf;
 	vfp = vf_get_provider(RECEIVER_NAME);
@@ -606,15 +616,24 @@ static inline struct vframe_s *ppmgr_vf_get_dec(void)
 		return NULL;
 	vf = vfp->ops->get(vfp->op_arg);
 	return vf;
+#else
+	return vf_get(RECEIVER_NAME);
+#endif
+
 }
 
 void ppmgr_vf_put_dec(struct vframe_s *vf)
 {
+#if 0
+
 	struct vframe_provider_s *vfp;
 	vfp = vf_get_provider(RECEIVER_NAME);
 	if (!(vfp && vfp->ops && vfp->ops->peek))
 		return;
 	vfp->ops->put(vf, vfp->op_arg);
+#else
+	vf_put(vf, RECEIVER_NAME);
+#endif
 }
 
 /************************************************
@@ -1358,6 +1377,9 @@ static void process_vf_rotate(struct vframe_s *vf,
 	int ret = 0;
 	unsigned cur_angle = 0;
 	int pic_struct = 0, interlace_mode;
+#ifdef CONFIG_POST_PROCESS_MANAGER_3D_PROCESS
+	enum platform_type_t platform_type;
+#endif
 #ifdef CONFIG_POST_PROCESS_MANAGER_PPSCALER
 	int rect_x = 0, rect_y = 0, rect_w = 0, rect_h = 0;
 	u32 ratio = 100;
@@ -1427,7 +1449,8 @@ static void process_vf_rotate(struct vframe_s *vf,
 		return;
 	}
 #ifdef CONFIG_POST_PROCESS_MANAGER_3D_PROCESS
-	if (plarform_type == PLATFORM_TV)
+	platform_type = get_platform_type();
+	if (platform_type == PLATFORM_TV)
 		ret = ppmgr_buffer_init(1);
 	else
 		ret = ppmgr_buffer_init(0);
@@ -1953,7 +1976,7 @@ static void process_vf_change(struct vframe_s *vf,
 	unsigned cur_angle = 0;
 	int ret = 0;
 #ifdef CONFIG_POST_PROCESS_MANAGER_3D_PROCESS
-	if (plarform_type == PLATFORM_TV)
+	if (platform_type == PLATFORM_TV)
 		ret = ppmgr_buffer_init(1);
 	else
 		ret = ppmgr_buffer_init(0);
@@ -2188,7 +2211,7 @@ static int process_vf_adjust(struct vframe_s *vf,
 			&ratio);
 	unsigned cur_angle = pp_vf->angle;
 #ifdef CONFIG_POST_PROCESS_MANAGER_3D_PROCESS
-	if (plarform_type == PLATFORM_TV)
+	if (platform_type == PLATFORM_TV)
 		ret = ppmgr_buffer_init(1);
 	else
 		ret = ppmgr_buffer_init(0);
@@ -2594,7 +2617,7 @@ static int ppmgr_task(void *data)
 				&& (!ppmgr_blocking)) {
 #ifdef CONFIG_POST_PROCESS_MANAGER_3D_PROCESS
 			int process_type = TYPE_NONE;
-			enum platform_type_t plarform_type;
+			enum platform_type_t platform_type;
 			vf = ppmgr_vf_get_dec();
 			if (!vf)
 				break;
@@ -2638,15 +2661,15 @@ static int ppmgr_task(void *data)
 					+ ppmgr_device.orientation
 					+ vf->orientation)%4;
 
-			plarform_type = get_platform_type();
-			if (plarform_type == PLATFORM_TV)
+			platform_type = get_platform_type();
+			if (platform_type == PLATFORM_TV)
 				process_type = get_tv_process_type(vf);
 			else
 				process_type = get_mid_process_type(vf);
 
 			if (process_type == TYPE_NONE) {
 				int ret = 0;
-				if (plarform_type != PLATFORM_TV)
+				if (platform_type != PLATFORM_TV)
 					ret = process_vf_deinterlace(vf,
 							context,
 							&ge2d_config);
@@ -2657,7 +2680,7 @@ static int ppmgr_task(void *data)
 						(ret > 0)?ret:0);
 
 			} else {
-				if (plarform_type == PLATFORM_TV)
+				if (platform_type == PLATFORM_TV)
 					ppmgr_vf_3d_tv(vf,
 							context, &ge2d_config);
 				else
@@ -2846,6 +2869,11 @@ int ppmgr_buffer_init(int vout_mode)
 	case 2:/*config fail, won't retry , return failure*/
 		return -1;
 	default:
+		return -1;
+	}
+	if (ppmgr_device.mirror_flag) {
+		PPMGRVPP_INFO("CMA memory force config fail\n");
+		ppmgr_buffer_status = 2;
 		return -1;
 	}
 	if ((!ppmgr_device.use_reserved) &&
@@ -3078,14 +3106,18 @@ int ppmgr_buffer_init(int vout_mode)
 
 int start_ppmgr_task(void)
 {
-	enum platform_type_t plarform_type;
-	plarform_type = get_platform_type();
+	enum platform_type_t platform_type;
+	platform_type = get_platform_type();
 
 	/*    if (get_cpu_type()>= MESON_CPU_TYPE_MESON6)*/
 	/*	    switch_mod_gate_by_name("ge2d", 1);*/
 	/*#endif*/
 	if (!task) {
 		vf_local_init();
+		ppmgr_blocking = false;
+		ppmgr_inited = true;
+		ppmgr_reset_type = 0;
+		set_buff_change(0);
 		ppmgr_buffer_status = 0;
 		task = kthread_run(ppmgr_task, 0, "ppmgr");
 	}

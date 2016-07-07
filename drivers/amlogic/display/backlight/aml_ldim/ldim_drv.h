@@ -1,16 +1,23 @@
 /*
- * AMLOGIC Ldim
+ * drivers/amlogic/display/backlight/aml_ldim/ldim_drv.h
  *
- * Author:
- *
- * Copyright (C) 2010 Amlogic Inc.
+ * Copyright (C) 2015 Amlogic, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- */
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+*/
+
+#ifndef _AML_LDIM_DRV_H_
+#define _AML_LDIM_DRV_H_
 #include <linux/cdev.h>
-#include <linux/amlogic/vout/aml_bl.h>
 
 #define AML_LDIM_MODULE_NAME "aml_ldim"
 #define AML_LDIM_DRIVER_NAME "aml_ldim"
@@ -19,9 +26,12 @@
 
 #define Wr(reg, val)   aml_write_vcbus(reg, val)
 #define Rd(adr)       aml_read_vcbus(adr)
+
+/*
 #define READ_VCBUS_REG(reg)	aml_read_vcbus(reg)
 #define WRITE_VCBUS_REG(reg, val)	aml_write_vcbus(reg, val)
 #define WRITE_VCBUS_REG_BITS(reg, val, st, len)W_APB_BIT(reg, val, st, len)
+*/
 
 /*#define LDIM_EXT_DEBUG_INFO*/
 #define LDIMPR(fmt, args...)     pr_info("ldim: "fmt"", ## args)
@@ -79,12 +89,14 @@ extern void set_bri_for_channels(unsigned short bri[16]);
 #define LD_BLKVMAX 32
 #define LD_BLKREGNUM 384  /* maximum support 24*16*/
 
+#define LD_DATA_DEPTH   12
+#define LD_DATA_MAX     0xfff
+
 struct ldim_config_s {
 	unsigned short hsize;
 	unsigned short vsize;
 	unsigned char bl_mode;
 	unsigned short bl_mapping[LD_BLKREGNUM];
-	struct bl_pwm_config_s pwm_config;
 };
 
 struct LDReg {
@@ -310,3 +322,4 @@ struct FW_DAT {
 #define REGION_RD_INDEX_BIT                  0
 #define REGION_RD_INDEX_WID                  7
 
+#endif

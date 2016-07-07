@@ -2189,7 +2189,8 @@ static int dmx_enable(struct aml_dmx *dmx)
 			      (1 << SECTION_END_WITH_TABLE_ID) |
 			      (1 << ENABLE_FREE_CLK_FEC_DATA_VALID) |
 			      (1 << ENABLE_FREE_CLK_STB_REG) |
-			      (1 << STB_DEMUX_ENABLE));
+			      (1 << STB_DEMUX_ENABLE) |
+			      (1 << NOT_USE_OF_SOP_INPUT));
 	} else {
 		DMX_WRITE_REG(dmx->id, STB_INT_MASK, 0);
 		DMX_WRITE_REG(dmx->id, FEC_INPUT_CONTROL, 0);
@@ -2829,6 +2830,7 @@ void dmx_reset_hw_ex(struct aml_dvb *dvb, int reset_irq)
 			struct aml_dsc_channel *ch = &dsc->channel[n];
 			/*if(ch->used) */
 			{
+				ch->id = n;
 				dsc_set_pid(ch, ch->pid);
 
 				if (ch->set & 1)
@@ -3648,8 +3650,11 @@ int aml_dmx_hw_deinit(struct aml_dmx *dmx)
 
 int aml_asyncfifo_hw_init(struct aml_asyncfifo *afifo)
 {
+
+/*
 	struct aml_dvb *dvb = afifo->dvb;
 	unsigned long flags;
+*/
 	int ret;
 
 	int len = ASYNCFIFO_BUFFER_SIZE_DEFAULT;
@@ -3658,7 +3663,9 @@ int aml_asyncfifo_hw_init(struct aml_asyncfifo *afifo)
 		return -1;
 
 	/*Async FIFO initialize*/
+/*
 	spin_lock_irqsave(&dvb->slock, flags);
+*/
 /*
 #if MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON8
 	CLK_GATE_ON(ASYNC_FIFO);
@@ -3669,9 +3676,9 @@ int aml_asyncfifo_hw_init(struct aml_asyncfifo *afifo)
 	WRITE_MPEG_REG(RESET6_REGISTER, (1<<11)|(1<<12));
 
 	ret = async_fifo_init(afifo, 1, len, buf);
-
+/*
 	spin_unlock_irqrestore(&dvb->slock, flags);
-
+*/
 	if (ret < 0)
 		asyncfifo_free_buffer(buf, len);
 

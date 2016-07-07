@@ -64,15 +64,6 @@
 			reg = <0x0 0x07300000 0x0 0x100000>;
 			no-map;
 		};
-
-		sec_chk:linux,secchk {
-			compatible = "shared-dma-pool";
-			status = "disabled";
-			reusable;
-			size = <0x0 0x2000000>;
-			alignment = <0x0 0x400000>;
-			linux,contiguous-region;
-		};
 		fb_reserved:linux,meson-fb {
 			compatible = "amlogic, fb-memory";
 			size = <0x0 0x2000000>;
@@ -414,16 +405,17 @@
 	   		pinname = "sd";
 	   		ocr_avail = <0x00200080>; // 3.3:0x200000, 1.8+3.3:0x00200080
 	   		caps = "MMC_CAP_4_BIT_DATA","MMC_CAP_MMC_HIGHSPEED",
-				"MMC_CAP_SD_HIGHSPEED";
-	   				//"MMC_CAP_UHS_SDR12",
-	   				//"MMC_CAP_UHS_SDR25","MMC_CAP_UHS_SDR50",
-	   				//"MMC_CAP_UHS_SDR104";
+				"MMC_CAP_SD_HIGHSPEED", "MMC_CAP_UHS_SDR12",
+				"MMC_CAP_UHS_SDR25","MMC_CAP_UHS_SDR50", "MMC_CAP_UHS_SDR104";
 	   		f_min = <400000>;
 	   		f_max = <100000000>;
 	   		max_req_size = <0x20000>;          /**128KB*/
 			gpio_dat3 = <&gpio       CARD_4       GPIO_ACTIVE_HIGH>;
 			jtag_pin =  <&gpio       CARD_0       GPIO_ACTIVE_HIGH>;
 			gpio_cd =  <&gpio       CARD_6       GPIO_ACTIVE_HIGH>;
+			/*if card have no switch gpio, remove all relative to vol_switch */
+			vol_switch =  <&gpio       GPIODV_26       GPIO_ACTIVE_HIGH>;
+			vol_switch_18 = <1>; /* 1 = high, 0 = low */
 			irq_in = <3>;
 			irq_out = <5>;
 	   		card_type = <5>; /* 0:unknown, 1:mmc card(include eMMC), 2:sd card(include tSD), 3:sdio device(ie:sdio-wifi), 4:SD combo (IO+mem) card, 5:NON sdio device(means sd/mmc card), other:reserved */
@@ -445,9 +437,9 @@
             caps = "MMC_CAP_8_BIT_DATA","MMC_CAP_MMC_HIGHSPEED",
 					"MMC_CAP_SD_HIGHSPEED", "MMC_CAP_NONREMOVABLE","MMC_CAP_1_8V_DDR",
 					"MMC_CAP_HW_RESET", "MMC_CAP_ERASE", "MMC_CAP_CMD23";
-            caps2 = "MMC_CAP2_HS200";
+            caps2 = "MMC_CAP2_HS200","MMC_CAP2_HS400";
 			f_min = <300000>;
-            f_max = <200000000>;
+            f_max = <100000000>;
             max_req_size = <0x20000>;          /**256KB*/
 		gpio_dat3 = <&gpio       BOOT_3      GPIO_ACTIVE_HIGH>;
 		hw_reset =  <&gpio       BOOT_9      GPIO_ACTIVE_HIGH>;
@@ -848,7 +840,7 @@
 		port-id-mode = <0>; /** 0: hardware, 1: sw_host, 2: sw_slave*/
 		usb-fifo = <728>;
 		cpu-type = "gxl";
-		controller-type = <1>; /** 0: normal, 1: otg+dwc3*/
+		controller-type = <1>; /** 0: normal, 1: otg+dwc3 host only, 2: otg+dwc3 device only*/
 		phy-reg = <0xd0078000>;
 		phy-reg-size = <0xa0>;
 		resets = <&clock GCLK_IDX_USB_GENERAL
@@ -990,16 +982,42 @@
 		compatible = "amlogic, aml-thermal";
 		device_name = "thermal";
 		#thermal-sensor-cells = <1>;
-		cpu_dyn_coeff = <140>;
-		/* cpu_freq gpu_freq cpu_core gpu_core */
-		min_state = <1000000 400 1 2>;
-		gpu_dyn_coeff = <437>;
-	};
-	cpucore:thermal_cpu_cores {
-		#cooling-cells = <2>; /* min followed by max */
-	};
-	gpucore:thermal_gpu_cores {
-		#cooling-cells = <2>; /* min followed by max */
+		cooling_devices {
+			cpufreq_cool_cluster0 {
+				min_state = <1000000>;
+				dyn_coeff = <140>;
+				cluster_id = <0>;
+				node_name = "cpus";
+				device_type = "cpufreq";
+			};
+			cpucore_cool_cluster0 {
+				min_state = <1>;
+				dyn_coeff = <0>;
+				cluster_id = <0>;
+				node_name = "cpu_core_cluster0";
+				device_type = "cpucore";
+			};
+			gpufreq_cool {
+				min_state = <400>;
+				dyn_coeff = <437>;
+				cluster_id = <0>;
+				node_name = "mali";
+				device_type = "gpufreq";
+			};
+			gpucore_cool {
+				min_state = <1>;
+				dyn_coeff = <0>;
+				cluster_id = <0>;
+				node_name = "thermal_gpu_cores";
+				device_type = "gpucore";
+			};
+		};
+		cpu_cluster0:cpu_core_cluster0 {
+			#cooling-cells = <2>; /* min followed by max */
+		};
+		gpucore:thermal_gpu_cores {
+			#cooling-cells = <2>; /* min followed by max */
+		};
 	};
 	thermal-zones {
 		soc_thermal {
@@ -1040,7 +1058,7 @@
 				};
 				cpucore_cooling_map {
 					trip = <&control>;
-					cooling-device = <&cpucore 0 3>;
+					cooling-device = <&cpu_cluster0 0 3>;
 					contribution = <1024>;
 				};
 				gpufreq_cooling_map {
@@ -1074,18 +1092,16 @@
 	audio_btpcm_pins:audio_btpcm_pins{
 		/* BT PCM PINMUX SETTING*/
 		amlogic,setmask=<5 0xf00000>;
-		amlogic,clrmask=<5 0x3c33
-				6 0x3>;
+		amlogic,clrmask=<5 0x3c33>;
 		amlogic,pins ="GPIOX_8", "GPIOX_9", "GPIOX_10", "GPIOX_11";
 	};
 };
 &efuse {
-	status = "disabled";
+	status = "okay";
 };
 &audio_data{
 	status = "disabled";
 };
 &defendkey {
-	memory-region = <&sec_chk>;
-	status = "disabled";
+	status = "okay";
 };

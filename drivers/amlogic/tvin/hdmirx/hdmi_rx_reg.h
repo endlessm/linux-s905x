@@ -43,6 +43,8 @@
 
 #define PREG_PAD_GPIO0_EN_N		(0xc8834400 + 0x0c * 4)
 #define PREG_PAD_GPIO0_O		(0xc8834400 + 0x0d * 4)
+#define PREG_PAD_GPIO0_I		(0xc8834400 + 0x0e * 4)
+
 
 
 #define PERIPHS_PIN_MUX_6		(0xc8834400 + 0x32 * 4)
@@ -746,9 +748,19 @@
 #define		AKSV_RCV				_BIT(25)
 /** Deep color mode change interrupt */
 #define		DCM_CURRENT_MODE_CHG	_BIT(16)
+#define		CTL3			_BIT(13)
+#define		CTL2			_BIT(12)
+#define		CTL1			_BIT(11)
+#define		CTL0			_BIT(10)
+
 /** Clock change interrupt */
 #define		CLK_CHANGE				_BIT(6)
 #define		PLL_LCK_CHG				_BIT(5)
+
+#define DWC_HDMI2_ISTS			(0xF68UL)
+#define DWC_HDMI2_IEN			(0xF6CUL)
+#define DWC_HDMI2_ICLR			(0xF70UL)
+#define DWC_HDMI2_IEN_SET		(0xF64UL)
 /*
  * DMI registers
  */
@@ -809,10 +821,14 @@
 #define		KSV_HOLD				_BIT(6)
 /** KSV list waiting status */
 #define		WAITING_KSV				_BIT(5)
+/** V` waiting status */
+#define		FIFO_READY				_BIT(4)
 /** Repeater capability */
 #define		REPEATER				_BIT(3)
 /** KSV list ready */
 #define		KSVLIST_READY			_BIT(2)
+#define		KSVLIST_TIMEOUT			_BIT(1)
+#define		KSVLIST_LOSTAUTH		_BIT(0)
 /** Register address: repeater status */
 #define	DWC_HDCP_RPT_BSTATUS		(0x604UL)
 /** Topology error indicator */

@@ -113,6 +113,7 @@ struct vpp_frame_par_s {
 	u32 vscale_skip_count;
 	u32 hscale_skip_count;
 	u32 vpp_3d_mode;
+	u32 trans_fmt;
 	u32 vpp_2pic_mode;
 	/* bit[1:0] 0: 1 pic,1:two pic one buf,2:tow pic two buf */
 	/* bit[2]0:select pic0,1:select pic1 */
@@ -131,9 +132,11 @@ struct vpp_frame_par_s {
 	u32 spsc1_w_in;
 	u32 spsc1_h_in;
 
+	bool nocomp;
+
 };
 
-#if 0
+#if 1
 /* (MESON_CPU_TYPE==MESON_CPU_TYPE_MESON6TV)||
 (MESON_CPU_TYPE==MESON_CPU_TYPE_MESONG9TV) */
 #define TV_3D_FUNCTION_OPEN
@@ -144,7 +147,7 @@ struct vpp_frame_par_s {
 #ifdef TV_REVERSE
 extern bool reverse;
 #endif
-
+extern bool platform_type;
 enum select_scaler_path_e {
 	sup0_pp_sp1_scpath,
 	sup0_pp_post_blender,
@@ -169,6 +172,8 @@ enum select_scaler_path_e {
 #define MODE_3D_MVC	    0x00000800
 #define MODE_3D_OUT_TB	0x00010000
 #define MODE_3D_OUT_LR	0x00020000
+#define MODE_FORCE_3D_TO_2D_LR	0x00100000
+#define MODE_FORCE_3D_TO_2D_TB	0x00200000
 
 /*when the output mode is field alterlative*/
 /* LRLRLRLRL mode */
@@ -183,7 +188,8 @@ enum select_scaler_path_e {
 	MODE_3D_OUT_FA_R_FIRST|MODE_3D_OUT_FA_LB_FIRST|MODE_3D_OUT_FA_RB_FIRST)
 
 #define MODE_3D_TO_2D_MASK  \
-	(MODE_3D_TO_2D_L|MODE_3D_TO_2D_R|MODE_3D_OUT_FA_MASK)
+	(MODE_3D_TO_2D_L|MODE_3D_TO_2D_R|MODE_3D_OUT_FA_MASK | \
+	MODE_FORCE_3D_TO_2D_LR | MODE_FORCE_3D_TO_2D_TB)
 
 #define VPP_3D_MODE_NULL 0x0
 #define VPP_3D_MODE_LR   0x1
@@ -199,7 +205,8 @@ enum select_scaler_path_e {
 
 extern
 void vpp_set_3d_scale(bool enable);
-
+extern
+void get_vpp_3d_mode(u32 trans_fmt, u32 *vpp_3d_mode);
 #endif
 
 extern void

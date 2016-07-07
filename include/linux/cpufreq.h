@@ -560,10 +560,14 @@ static inline int cpufreq_generic_exit(struct cpufreq_policy *policy)
 void acct_update_power(struct task_struct *p, cputime_t cputime);
 
 #ifdef CONFIG_CPU_FREQ_GOV_HOTPLUG
-void cpufreq_set_max_cpu_num(unsigned int cpu_num);
+void cpufreq_set_max_cpu_num(unsigned int cpu_num, int cluster_id);
 #else
-static inline void cpufreq_set_max_cpu_num(unsigned int cpu_num)
+static inline void cpufreq_set_max_cpu_num(unsigned int cpu_num, int cluster_id)
 {
 }
 #endif
+int dev_pm_opp_init_cpufreq_table(struct device *dev,
+		struct cpufreq_frequency_table **table);
+void dev_pm_opp_free_cpufreq_table(struct device *dev,
+		struct cpufreq_frequency_table   **table);
 #endif /* _LINUX_CPUFREQ_H */

@@ -141,6 +141,7 @@ extern void vdin_set_def_wr_canvas(struct vdin_dev_s *devp);
 extern void vdin_hw_enable(unsigned int offset);
 extern void vdin_hw_disable(unsigned int offset);
 extern unsigned int vdin_get_field_type(unsigned int offset);
+extern int vdin_vsync_reset_mif(int index);
 extern void vdin_set_cutwin(struct vdin_dev_s *devp);
 extern void vdin_set_decimation(struct vdin_dev_s *devp);
 extern unsigned int vdin_get_meas_hcnt64(unsigned int offset);
@@ -171,7 +172,6 @@ extern void vdin_output_ctl(unsigned int offset,
 extern void vdin_wr_reverse(unsigned int offset, bool hreverse,
 		bool vreverse);
 extern void vdin_set_hvscale(struct vdin_dev_s *devp);
-extern void vdin_bit_mode_ctl(unsigned int mode);
 extern void vdin_set_bitdepth(struct vdin_dev_s *devp);
 extern void vdin_set_cm2(unsigned int offset, unsigned int w,
 		unsigned int h, unsigned int *data);

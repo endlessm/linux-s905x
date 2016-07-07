@@ -140,7 +140,8 @@ static const char * const matrix_coeffs_names[] = {
 
 #define LOSLESS_COMPRESS_MODE
 /* DOUBLE_WRITE_MODE is enabled only when NV21 8 bit output is needed */
-/* double_write_mode: 0, no double write; 1, 1:1 ratio; 2, (1/4):(1/4) ratio
+/* double_write_mode: 0, no double write; 1, 1:1 ratio; 2, (1/4):(1/4) ratio;
+	3, (1/4):(1/4) ratio, with both compressed frame included
 	0x10, double write only
 */
 static u32 double_write_mode;
@@ -1127,7 +1128,6 @@ struct hevc_state_s {
 	int last_pts;
 	u64 last_lookup_pts_us64;
 	u64 last_pts_us64;
-	u64 shift_byte_count;
 	u32 shift_byte_count_lo;
 	u32 shift_byte_count_hi;
 	int pts_mode_switching_count;
@@ -1245,7 +1245,6 @@ static void hevc_init_stru(struct hevc_state_s *hevc,
 	hevc->last_lookup_pts = 0;
 	hevc->last_pts_us64 = 0;
 	hevc->last_lookup_pts_us64 = 0;
-	hevc->shift_byte_count = 0;
 	hevc->shift_byte_count_lo = 0;
 	hevc->shift_byte_count_hi = 0;
 	hevc->pts_mode_switching_count = 0;
@@ -1384,7 +1383,8 @@ static void uninit_buf_list(struct hevc_state_s *hevc)
 
 		msleep(50); /* ensure RDMA for display is done */
 		if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXBB &&
-			double_write_mode == 0) {
+			((double_write_mode == 0) ||
+			 (double_write_mode == 3))) {
 			hevc->predisp_addr =
 			READ_VCBUS_REG(AFBC_BODY_BADDR) << 4;
 		} else {
@@ -1500,13 +1500,19 @@ static void init_buf_list(struct hevc_state_s *hevc)
 		+ losless_comp_body_size;
 	int mc_buffer_size_h = (mc_buffer_size + 0xffff)>>16;
 	if (double_write_mode) {
+		int pic_width_dw = ((double_write_mode == 2) ||
+			(double_write_mode == 3)) ?
+			pic_width / 2 : pic_width;
+		int pic_height_dw = ((double_write_mode == 2) ||
+			(double_write_mode == 3)) ?
+			pic_height / 2 : pic_height;
 		int lcu_size = hevc->lcu_size;
-		int pic_width_lcu  = (pic_width % lcu_size)
-			? pic_width / lcu_size
-			+ 1 : pic_width / lcu_size;
-		int pic_height_lcu = (pic_height % lcu_size)
-			? pic_height / lcu_size
-				+ 1 : pic_height / lcu_size;
+		int pic_width_lcu  = (pic_width_dw % lcu_size)
+			? pic_width_dw / lcu_size
+			+ 1 : pic_width_dw / lcu_size;
+		int pic_height_lcu = (pic_height_dw % lcu_size)
+			? pic_height_dw / lcu_size
+				+ 1 : pic_height_dw / lcu_size;
 		int lcu_total = pic_width_lcu * pic_height_lcu;
 		int mc_buffer_size_u_v = lcu_total * lcu_size * lcu_size / 2;
 		int mc_buffer_size_u_v_h = (mc_buffer_size_u_v + 0xffff) >> 16;
@@ -1688,7 +1694,21 @@ static int config_pic(struct hevc_state_s *hevc, struct PIC_s *pic)
 	int mc_buffer_size_u_v = 0;
 	int mc_buffer_size_u_v_h = 0;
 	if (double_write_mode) {
-		mc_buffer_size_u_v = lcu_total * lcu_size * lcu_size / 2;
+		int pic_width_dw = ((double_write_mode == 2) ||
+			(double_write_mode == 3)) ?
+			pic_width / 2 : pic_width;
+		int pic_height_dw = ((double_write_mode == 2) ||
+			(double_write_mode == 3)) ?
+			pic_height / 2 : pic_height;
+		int pic_width_lcu_dw = (pic_width_dw % lcu_size) ?
+			pic_width_dw / lcu_size + 1 :
+			pic_width_dw / lcu_size;
+		int pic_height_lcu_dw = (pic_height_dw % lcu_size) ?
+			pic_height_dw / lcu_size + 1 :
+			pic_height_dw / lcu_size;
+		int lcu_total_dw = pic_width_lcu_dw * pic_height_lcu_dw;
+
+		mc_buffer_size_u_v = lcu_total_dw * lcu_size * lcu_size / 2;
 		mc_buffer_size_u_v_h = (mc_buffer_size_u_v + 0xffff) >> 16;
 			/*64k alignment*/
 		buf_size = ((mc_buffer_size_u_v_h << 16) * 3);
@@ -3467,6 +3487,10 @@ static struct PIC_s *get_new_pic(struct hevc_state_s *hevc,
 		pic = &hevc->m_PIC[i];
 		if (pic->index == -1)
 			continue;
+		if ((pic->used_by_display)
+			&& ((READ_VCBUS_REG(AFBC_BODY_BADDR) << 4) !=
+				pic->mc_y_adr))
+			pic->used_by_display = 0;
 		if (pic->output_mark == 0 && pic->referenced == 0
 			&& pic->output_ready == 0
 			&& pic->used_by_display == 0) {
@@ -4331,7 +4355,8 @@ static void set_canvas(struct PIC_s *pic)
 	if	(double_write_mode) {
 		canvas_w = pic->width;
 		canvas_h = pic->height;
-		if (double_write_mode == 2) {
+		if ((double_write_mode == 2) ||
+			(double_write_mode == 3)) {
 			canvas_w >>= 2;
 			canvas_h >>= 2;
 		}
@@ -4401,7 +4426,8 @@ static void set_frame_info(struct hevc_state_s *hevc, struct vframe_s *vf)
 	unsigned int ar;
 	int i, j;
 
-	if (double_write_mode == 2) {
+	if ((double_write_mode == 2) ||
+		(double_write_mode == 3)) {
 		vf->width = hevc->frame_width/4;
 		vf->height = hevc->frame_height/4;
 	} else {
@@ -4500,7 +4526,6 @@ static void vh265_vf_put(struct vframe_s *vf, void *op_arg)
 			hevc->m_PIC[index1].vf_ref--;
 
 			if (hevc->m_PIC[index1].vf_ref == 0) {
-				clear_used_by_display_flag(hevc);
 				hevc->m_PIC[index1].output_ready = 0;
 				if (hevc->wait_buf != 0)
 					WRITE_VREG(HEVC_ASSIST_MBOX1_IRQ_REG,
@@ -4690,42 +4715,54 @@ static int prepare_display_buf(struct hevc_state_s *hevc, struct PIC_s *pic)
 		vf->index = 0xff00 | pic->index;
 #if 1
 /*SUPPORT_10BIT*/
+		if (double_write_mode & 0x10) {
+			/* double write only */
+			vf->compBodyAddr = 0;
+			vf->compHeadAddr = 0;
+		} else {
+			vf->compBodyAddr = pic->mc_y_adr; /*body adr*/
+			vf->compHeadAddr = pic->mc_y_adr +
+						pic->losless_comp_body_size;
+					/*head adr*/
+			vf->canvas0Addr = vf->canvas1Addr = 0;
+		}
 		if (double_write_mode) {
 			vf->type = VIDTYPE_PROGRESSIVE | VIDTYPE_VIU_FIELD;
 			vf->type |= VIDTYPE_VIU_NV21;
+			if (double_write_mode == 3)
+				vf->type |= VIDTYPE_COMPRESS;
 			vf->canvas0Addr = vf->canvas1Addr = spec2canvas(pic);
 		} else {
+			vf->canvas0Addr = vf->canvas1Addr = 0;
 			vf->type = VIDTYPE_COMPRESS | VIDTYPE_VIU_FIELD;
-			switch (hevc->bit_depth_luma) {
-			case 9:
-				vf->bitdepth = BITDEPTH_Y9;
-				break;
-			case 10:
-				vf->bitdepth = BITDEPTH_Y10;
-				break;
-			default:
-				vf->bitdepth = BITDEPTH_Y8;
-				break;
-			}
-			switch (hevc->bit_depth_chroma) {
-			case 9:
-				vf->bitdepth |= (BITDEPTH_U9 | BITDEPTH_V9);
-				break;
-			case 10:
-				vf->bitdepth |= (BITDEPTH_U10 | BITDEPTH_V10);
-				break;
-			default:
-				vf->bitdepth |= (BITDEPTH_U8 | BITDEPTH_V8);
-				break;
-			}
-			if (hevc->mem_saving_mode == 1)
-				vf->bitdepth |= BITDEPTH_SAVING_MODE;
+		}
+		vf->compWidth = pic->width;
+		vf->compHeight = pic->height;
 
-			vf->canvas1Addr = pic->mc_y_adr; /*body adr*/
-			vf->canvas0Addr = pic->mc_y_adr +
-						pic->losless_comp_body_size;
-						/*head adr*/
-	}
+		switch (hevc->bit_depth_luma) {
+		case 9:
+			vf->bitdepth = BITDEPTH_Y9;
+			break;
+		case 10:
+			vf->bitdepth = BITDEPTH_Y10;
+			break;
+		default:
+			vf->bitdepth = BITDEPTH_Y8;
+			break;
+		}
+		switch (hevc->bit_depth_chroma) {
+		case 9:
+			vf->bitdepth |= (BITDEPTH_U9 | BITDEPTH_V9);
+			break;
+		case 10:
+			vf->bitdepth |= (BITDEPTH_U10 | BITDEPTH_V10);
+			break;
+		default:
+			vf->bitdepth |= (BITDEPTH_U8 | BITDEPTH_V8);
+			break;
+		}
+		if (hevc->mem_saving_mode == 1)
+			vf->bitdepth |= BITDEPTH_SAVING_MODE;
 #else
 		vf->type = VIDTYPE_PROGRESSIVE | VIDTYPE_VIU_FIELD;
 		vf->type |= VIDTYPE_VIU_NV21;
@@ -4735,7 +4772,8 @@ static int prepare_display_buf(struct hevc_state_s *hevc, struct PIC_s *pic)
 		/* if((vf->width!=pic->width)||(vf->height!=pic->height)) */
 		/* pr_info("aaa: %d/%d, %d/%d\n",
 		   vf->width,vf->height, pic->width, pic->height); */
-		if (double_write_mode == 2) {
+		if ((double_write_mode == 2) ||
+			(double_write_mode == 3)) {
 			vf->width = pic->width/4;
 			vf->height = pic->height/4;
 		}	else {
@@ -5011,8 +5049,8 @@ static void process_nal_sei(struct hevc_state_s *hevc,
 
 static void hevc_recover(struct hevc_state_s *hevc)
 {
-
 	u32 rem;
+	u64 shift_byte_count64;
 	unsigned hevc_shift_byte_count;
 	unsigned hevc_stream_start_addr;
 	unsigned hevc_stream_end_addr;
@@ -5052,13 +5090,20 @@ static void hevc_recover(struct hevc_state_s *hevc)
 	hevc_shift_byte_count = READ_VREG(HEVC_SHIFT_BYTE_COUNT);
 	if ((hevc->shift_byte_count_lo & (1 << 31))
 		&& ((hevc_shift_byte_count & (1 << 31)) == 0))
-		hevc->shift_byte_count += 0x100000000ULL;
-	div_u64_rem(hevc->shift_byte_count, hevc_stream_buf_size, &rem);
-	hevc->shift_byte_count -= rem;
-	hevc->shift_byte_count += hevc_stream_rd_ptr - hevc_stream_start_addr;
+		hevc->shift_byte_count_hi++;
+
+	hevc->shift_byte_count_lo = hevc_shift_byte_count;
+	shift_byte_count64 = ((u64)(hevc->shift_byte_count_hi) << 32) |
+				hevc->shift_byte_count_lo;
+	div_u64_rem(shift_byte_count64, hevc_stream_buf_size, &rem);
+	shift_byte_count64 -= rem;
+	shift_byte_count64 += hevc_stream_rd_ptr - hevc_stream_start_addr;
+
 	if (rem > (hevc_stream_rd_ptr - hevc_stream_start_addr))
-		hevc->shift_byte_count += hevc_stream_buf_size;
-	hevc->shift_byte_count_lo = (u32) hevc->shift_byte_count;
+		shift_byte_count64 += hevc_stream_buf_size;
+
+	hevc->shift_byte_count_lo = (u32)shift_byte_count64;
+	hevc->shift_byte_count_hi = (u32)(shift_byte_count64 >> 32);
 
 	WRITE_VREG(DOS_SW_RESET3,
 			   /* (1<<2)| */
@@ -5625,7 +5670,7 @@ static void vh265_put_timer_func(unsigned long arg)
 
 	enum receviver_start_e state = RECEIVER_INACTIVE;
 	if (hevc->init_flag == 0) {
-		if (hevc->stat & STAT_TIMER_INIT) {
+		if (hevc->stat & STAT_TIMER_ARM) {
 			timer->expires = jiffies + PUT_INTERVAL;
 			add_timer(&hevc->timer);
 		}
@@ -5712,8 +5757,6 @@ static void vh265_put_timer_func(unsigned long arg)
 		hevc->error_system_watchdog_count = 0;
 	}
 
-	timer->expires = jiffies + PUT_INTERVAL;
-
 	if (decode_stop_pos != decode_stop_pos_pre) {
 		WRITE_VREG(DECODE_STOP_POS, decode_stop_pos);
 		decode_stop_pos_pre = decode_stop_pos;
@@ -5784,6 +5827,8 @@ static void vh265_put_timer_func(unsigned long arg)
 			hevc->frame_height * fps;
 	}
 
+
+	timer->expires = jiffies + PUT_INTERVAL;
 	add_timer(timer);
 }
 

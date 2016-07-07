@@ -107,6 +107,8 @@ static DEFINE_MUTEX(vh264_mutex);
 #define SWITCHING_STATE_OFF       0
 #define SWITCHING_STATE_ON_CMD3   1
 #define SWITCHING_STATE_ON_CMD1   2
+#define SWITCHING_STATE_ON_CMD1_PENDING   3
+
 
 #define DEC_CONTROL_FLAG_FORCE_2997_1080P_INTERLACE 0x0001
 #define DEC_CONTROL_FLAG_FORCE_2500_576P_INTERLACE  0x0002
@@ -479,7 +481,7 @@ static int vh264_vf_states(struct vframe_states *states, void *op_arg)
 	return 0;
 }
 
-#ifdef CONFIG_POST_PROCESS_MANAGER_3D_PROCESS
+#if 0
 static tvin_trans_fmt_t convert_3d_format(u32 type)
 {
 	const tvin_trans_fmt_t conv_tab[] = {
@@ -506,8 +508,7 @@ static void set_frame_info(struct vframe_s *vf)
 	vf->flag = 0;
 
 #ifdef CONFIG_POST_PROCESS_MANAGER_3D_PROCESS
-	vf->trans_fmt = convert_3d_format(frame_packing_type);
-
+	vf->trans_fmt = 0;
 	if ((vf->trans_fmt == TVIN_TFMT_3D_LRF) ||
 		(vf->trans_fmt == TVIN_TFMT_3D_LA)) {
 		vf->left_eye.start_x = 0;
@@ -610,6 +611,8 @@ static void vh264_set_params(struct work_struct *work)
 	u32 disp_addr = 0xffffffff;
 	struct canvas_s cur_canvas;
 	mutex_lock(&vh264_mutex);
+	if (vh264_stream_switching_state == SWITCHING_STATE_ON_CMD1)
+		vh264_stream_switching_state = SWITCHING_STATE_ON_CMD1_PENDING;
 	post_canvas = get_post_canvas();
 	timing_info_present_flag = 0;
 	mb_width = READ_VREG(AV_SCRATCH_1);
@@ -2462,8 +2465,6 @@ static s32 vh264_init(void)
 static int vh264_stop(int mode)
 {
 	int i;
-	struct canvas_s cur_canvas;
-	unsigned int disp_addr = 0xffffffff;
 
 	if (stat & STAT_VDEC_RUN) {
 		amvdec_stop();
@@ -2513,18 +2514,10 @@ static int vh264_stop(int mode)
 		sei_data_buffer_phys = 0;
 	}
 	amvdec_disable();
-	if (is_4k && !get_blackout_policy()) {
-		msleep(50); /* wait for last frame  displayed */
-		canvas_read(
-			(READ_VCBUS_REG(VD1_IF0_CANVAS0)
-			& 0xff), &cur_canvas);
-		disp_addr = cur_canvas.addr;
-		}
 
 	  for (i = 0; i < ARRAY_SIZE(buffer_spec); i++) {
 			if (buffer_spec[i].phy_addr) {
-				if (is_4k && disp_addr ==
-					(u32)buffer_spec[i].phy_addr)
+				if (is_4k && !get_blackout_policy())
 					pr_info("Skip releasing CMA buffer %d\n",
 								i);
 				else {
@@ -2535,10 +2528,6 @@ static int vh264_stop(int mode)
 					buffer_spec[i].alloc_count = 0;
 				}
 			}
-		 if (is_4k && buffer_spec[i].y_addr == disp_addr) {
-			pr_info("4K2K dec stop, keeping buffer index = %d\n",
-				   i);
-		}
 	  }
 	return 0;
 }
@@ -2589,7 +2578,8 @@ static void stream_switching_done(void)
 					vh264_stream_switching_state);
 		schedule_work(&set_parameter_work);
 		return;
-	}
+	} else if (state == SWITCHING_STATE_ON_CMD1_PENDING)
+		return;
 
 	vh264_stream_switching_state = SWITCHING_STATE_OFF;
 
@@ -2655,7 +2645,7 @@ static void stream_switching_do(struct work_struct *work)
 		mb_width_num = mb_width;
 		mb_height_num = mb_height;
 
-		if (buffer_index > VF_BUF_NUM - 1)
+		if (buffer_index > VF_BUF_NUM - 1 || is_4k)
 			do_copy = false;
 
 		/* construct a clone of the frame from last frame */

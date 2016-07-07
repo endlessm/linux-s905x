@@ -260,6 +260,7 @@ struct hdmitx_dev {
 	/* configure for I2S: 8ch in, 2ch out */
 	/* 0: default setting  1:ch0/1  2:ch2/3  3:ch4/5  4:ch6/7 */
 	unsigned int aud_output_ch;
+	unsigned int hdr_src_feature;
 };
 
 #define CMD_DDC_OFFSET          (0x10 << 24)
@@ -311,10 +312,15 @@ struct hdmitx_dev {
 #define CONF_CLR_AVI_PACKET     (CMD_CONF_OFFSET + 0x04)
 #define CONF_CLR_VSDB_PACKET    (CMD_CONF_OFFSET + 0x05)
 #define CONF_VIDEO_MAPPING	(CMD_CONF_OFFSET + 0x06)
+#define CONF_GET_HDMI_DVI_MODE	(CMD_CONF_OFFSET + 0x07)
+
 #define CONF_AUDIO_MUTE_OP      (CMD_CONF_OFFSET + 0x1000 + 0x00)
 #define AUDIO_MUTE          0x1
 #define AUDIO_UNMUTE        0x2
 #define CONF_CLR_AUDINFO_PACKET (CMD_CONF_OFFSET + 0x1000 + 0x01)
+#define CONF_AVI_BT2020		(CMD_CONF_OFFSET + 0X2000 + 0x00)
+	#define CLR_AVI_BT2020	0x0
+	#define SET_AVI_BT2020	0x1
 
 /***********************************************************************
  *             MISC control, hpd, hpll //CntlMisc
@@ -407,7 +413,6 @@ extern void rx_repeat_hpd_state(unsigned int st);
 /* prevent compile error in no HDMIRX case */
 void __attribute__((weak))rx_repeat_hpd_state(unsigned int st)
 {
-	pr_warn("not HDMI Repeater\n");
 }
 
 extern void rx_edid_physical_addr(unsigned char a, unsigned char b,
@@ -415,26 +420,28 @@ extern void rx_edid_physical_addr(unsigned char a, unsigned char b,
 void __attribute__((weak))rx_edid_physical_addr(unsigned char a,
 	unsigned char b, unsigned char c, unsigned char d)
 {
-	pr_warn("not HDMI Repeater\n");
 }
 
 extern void rx_set_receiver_edid(unsigned char *data, int len);
 void __attribute__((weak))rx_set_receiver_edid(unsigned char *data, int len)
 {
-	pr_warn("not HDMI Repeater\n");
 }
 
+/*
+ * ver = 22 means downstream supports HDCP22
+ * ver = 14 means support HDCP14
+ * ver = 0 means support NO HDCP
+ */
 extern void rx_repeat_hdcp_ver(unsigned int ver);
 void __attribute__((weak))rx_repeat_hdcp_ver(unsigned int ver)
 {
-	pr_warn("not HDMI Repeater\n");
 }
 
-extern void rx_set_receive_hdcp(unsigned char *data, int len, int depth);
+extern void rx_set_receive_hdcp(unsigned char *data, int len, int depth,
+	bool max_cascade, bool max_devs);
 void __attribute__((weak))rx_set_receive_hdcp(unsigned char *data, int len,
-	int depth)
+	int depth, bool max_cascade, bool max_devs)
 {
-	pr_warn("not HDMI Repeater\n");
 }
 
 extern int hdmitx_set_display(struct hdmitx_dev *hdmitx_device,

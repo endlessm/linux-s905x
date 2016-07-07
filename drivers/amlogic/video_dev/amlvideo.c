@@ -281,6 +281,7 @@ unsigned eventparam[4];
 struct mutex vfpMutex;
 static int video_receiver_event_fun(int type, void *data, void *private_data)
 {
+	struct vframe_states states;
 	if (type == VFRAME_EVENT_PROVIDER_UNREG) {
 		unregFlag = 1;
 		if (index != 8)
@@ -292,6 +293,8 @@ static int video_receiver_event_fun(int type, void *data, void *private_data)
 			omx_secret_mode = false;
 		}
 		first_frame = 0;
+		vfq_init(&q_ready, AMLVIDEO_POOL_SIZE + 1,
+			&amlvideo_pool_ready[0]);
 	}
 	if (type == VFRAME_EVENT_PROVIDER_REG) {
 		AMLVIDEO_DBG("AML:VFRAME_EVENT_PROVIDER_REG\n");
@@ -304,7 +307,19 @@ static int video_receiver_event_fun(int type, void *data, void *private_data)
 		first_frame = 0;
 		mutex_unlock(&vfpMutex);
 	} else if (type == VFRAME_EVENT_PROVIDER_QUREY_STATE) {
-		return RECEIVER_ACTIVE;
+		amlvideo_vf_states(&states, NULL);
+		if (states.buf_avail_num > 0) {
+			return RECEIVER_ACTIVE;
+		} else {
+			if (vf_notify_receiver(
+				PROVIDER_NAME,
+				VFRAME_EVENT_PROVIDER_QUREY_STATE,
+				NULL)
+			== RECEIVER_ACTIVE)
+				return RECEIVER_ACTIVE;
+			return RECEIVER_INACTIVE;
+		}
+		/*break;*/
 	} else if (type == VFRAME_EVENT_PROVIDER_START) {
 		AMLVIDEO_DBG("AML:VFRAME_EVENT_PROVIDER_START\n");
 		if (vf_get_receiver(PROVIDER_NAME)) {
@@ -312,14 +327,14 @@ static int video_receiver_event_fun(int type, void *data, void *private_data)
 				PROVIDER_NAME);
 			AMLVIDEO_DBG("aaa->name=%s", aaa->name);
 			omx_secret_mode = true;
+			vfq_init(&q_ready, AMLVIDEO_POOL_SIZE + 1,
+					&amlvideo_pool_ready[0]);
 			vf_provider_init(&amlvideo_vf_prov, PROVIDER_NAME,
 						&amlvideo_vf_provider, NULL);
 			vf_reg_provider(&amlvideo_vf_prov);
 			vf_notify_receiver(PROVIDER_NAME,
 						VFRAME_EVENT_PROVIDER_START,
 						NULL);
-			vfq_init(&q_ready, AMLVIDEO_POOL_SIZE + 1,
-					&amlvideo_pool_ready[0]);
 		}
 	}
 	return 0;
@@ -615,17 +630,10 @@ static int freerun_dqbuf(struct v4l2_buffer *p)
 	u64 pts_us64 = 0;
 	if (omx_secret_mode == true) {
 		if (vfq_level(&q_ready) > AMLVIDEO_POOL_SIZE - 1) {
-			/* msleep(10); */
-			usleep_range(9000, 10000);
 			return -EAGAIN;
 		}
 	}
 	if (!vf_peek(RECEIVER_NAME)) {
-		/* printk("%s, %s, %d, %s\n",
-		 * __FILE__, __FUNCTION__, __LINE__,
-		 * RECEIVER_NAME); */
-		/* msleep(10); */
-		usleep_range(9000, 10000);
 		return -EAGAIN;
 	}
 	if (omx_secret_mode != true)
@@ -649,13 +657,19 @@ static int freerun_dqbuf(struct v4l2_buffer *p)
 			pts_us64 = 0;
 		} else {
 			pts_us64 = last_pts_us64
-				+ (DUR2PTS(ppmgrvf->duration));
+				+ (DUR2PTS(ppmgrvf->duration))*100/9;
 		}
 		p->timestamp.tv_sec = pts_us64 >> 32;
 		p->timestamp.tv_usec = pts_us64 & 0xFFFFFFFF;
 		last_pts_us64 = pts_us64;
 		p->timecode.type = ppmgrvf->width;
 		p->timecode.flags = ppmgrvf->height;
+
+		vf_notify_receiver(
+				PROVIDER_NAME,
+				VFRAME_EVENT_PROVIDER_VFRAME_READY,
+				NULL);
+
 		return ret;
 	}
 	if (ppmgrvf->pts != 0) {
