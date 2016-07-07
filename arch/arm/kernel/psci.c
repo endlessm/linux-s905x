@@ -174,7 +174,7 @@ void __init psci_init(void)
 	pr_info("probing function IDs from device-tree\n");
 
 	if (of_property_read_string(np, "method", &method)) {
-		pr_warning("missing \"method\" property\n");
+		pr_warn("missing \"method\" property\n");
 		goto out_put_node;
 	}
 
@@ -183,7 +183,7 @@ void __init psci_init(void)
 	} else if (!strcmp("smc", method)) {
 		invoke_psci_fn = __invoke_psci_fn_smc;
 	} else {
-		pr_warning("invalid \"method\" property: %s\n", method);
+		pr_warn("invalid \"method\" property: %s\n", method);
 		goto out_put_node;
 	}
 

@@ -29,6 +29,7 @@
 #include <linux/async.h>
 #include <linux/suspend.h>
 #include <trace/events/power.h>
+#include <linux/cpufreq.h>
 #include <linux/cpuidle.h>
 #include <linux/timer.h>
 #include <linux/wakeup_reason.h>
@@ -265,15 +266,24 @@ static pm_callback_t pm_op(const struct dev_pm_ops *ops, pm_message_t state)
 #ifdef CONFIG_HIBERNATE_CALLBACKS
 	case PM_EVENT_FREEZE:
 	case PM_EVENT_QUIESCE:
-		return ops->freeze;
+		if (ops->freeze)
+			return ops->freeze;
+		else
+			return ops->suspend;
 	case PM_EVENT_HIBERNATE:
 		return ops->poweroff;
 	case PM_EVENT_THAW:
 	case PM_EVENT_RECOVER:
-		return ops->thaw;
+		if (ops->thaw)
+			return ops->thaw;
+		else
+			return ops->resume;
 		break;
 	case PM_EVENT_RESTORE:
-		return ops->restore;
+		if (ops->restore)
+			return ops->restore;
+		else
+			return ops->resume;
 #endif /* CONFIG_HIBERNATE_CALLBACKS */
 	}
 
@@ -820,6 +830,7 @@ void dpm_resume(pm_message_t state)
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
 	dpm_show_time(starttime, state, NULL);
+	cpufreq_resume();
 }
 
 /**
@@ -1171,8 +1182,8 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 	int error = 0;
 	struct timer_list timer;
 	struct dpm_drv_wd_data data;
-	DECLARE_DPM_WATCHDOG_ON_STACK(wd);
 	char suspend_abort[MAX_SUSPEND_ABORT_LEN];
+	DECLARE_DPM_WATCHDOG_ON_STACK(wd);
 
 	dpm_wait_for_children(dev, async);
 
@@ -1314,6 +1325,7 @@ int dpm_suspend(pm_message_t state)
 	int error = 0;
 
 	might_sleep();
+	cpufreq_suspend();
 
 	mutex_lock(&dpm_list_mtx);
 	pm_transition = state;

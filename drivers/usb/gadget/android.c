@@ -29,8 +29,6 @@
 #include <linux/usb/gadget.h>
 
 #include "gadget_chips.h"
-
-#include "f_fs.c"
 #include "f_audio_source.c"
 #include "f_mtp.c"
 #include "f_accessory.c"
@@ -47,6 +45,9 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION("1.0");
 
 static const char longname[] = "Gadget Android";
+static struct android_dev *_android_dev;
+int android_usb_inited = 0;
+#include "f_fs.c"
 
 /* Default vendor and product IDs, overridden by userspace */
 #define VENDOR_ID		0x18D1
@@ -101,7 +102,6 @@ struct android_dev {
 };
 
 static struct class *android_class;
-static struct android_dev *_android_dev;
 static int android_bind_config(struct usb_configuration *c);
 static void android_unbind_config(struct usb_configuration *c);
 
@@ -220,7 +220,7 @@ static int ffs_function_init(struct android_usb_function *f,
 	if (!f->config)
 		return -ENOMEM;
 
-	return functionfs_init();
+	return 0;
 }
 
 static void ffs_function_cleanup(struct android_usb_function *f)
@@ -353,12 +353,12 @@ static void functionfs_closed_callback(struct ffs_data *ffs)
 	mutex_unlock(&dev->mutex);
 }
 
-static void *functionfs_acquire_dev_callback(const char *dev_name)
+static void *functionfs_acquire_dev_callback(struct ffs_dev *dev)
 {
 	return 0;
 }
 
-static void functionfs_release_dev_callback(struct ffs_data *ffs_data)
+static void functionfs_release_dev_callback(struct ffs_dev *dev)
 {
 }
 
@@ -826,7 +826,7 @@ err_usb_add_function:
 		usb_remove_function(c, config->f_ms[i]);
 	return ret;
 }
-
+#if 0
 static void mass_storage_function_unbind_config(struct android_usb_function *f,
 					       struct usb_configuration *c)
 {
@@ -836,7 +836,7 @@ static void mass_storage_function_unbind_config(struct android_usb_function *f,
 	for (i = 0; i < config->instances_on; i++)
 		usb_remove_function(c, config->f_ms[i]);
 }
-
+#endif
 static ssize_t mass_storage_inquiry_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
@@ -1499,6 +1499,34 @@ static int android_create_device(struct android_dev *dev)
 	return 0;
 }
 
+int android_usb_init(void)
+{
+	struct android_dev *dev;
+	int err;
+
+	dev = _android_dev;
+
+	err = usb_composite_probe(&android_usb_driver);
+	if (err) {
+		pr_err("%s: failed to probe driver %d", __func__, err);
+		goto err_probe;
+	}
+
+	/* HACK: exchange composite's setup with ours */
+	composite_setup_func = android_usb_driver.gadget_driver.setup;
+	android_usb_driver.gadget_driver.setup = android_setup;
+	android_usb_inited = 1;
+	return 0;
+
+err_probe:
+	device_destroy(android_class, dev->dev->devt);
+
+	kfree(dev);
+	_android_dev = NULL;
+	class_destroy(android_class);
+	return err;
+}
+EXPORT_SYMBOL(android_usb_init);
 
 static int __init init(void)
 {
@@ -1529,22 +1557,11 @@ static int __init init(void)
 
 	_android_dev = dev;
 
-	err = usb_composite_probe(&android_usb_driver);
-	if (err) {
-		pr_err("%s: failed to probe driver %d", __func__, err);
-		goto err_probe;
-	}
-
-	/* HACK: exchange composite's setup with ours */
-	composite_setup_func = android_usb_driver.gadget_driver.setup;
-	android_usb_driver.gadget_driver.setup = android_setup;
-
 	return 0;
 
-err_probe:
-	device_destroy(android_class, dev->dev->devt);
 err_create:
 	kfree(dev);
+	_android_dev = NULL;
 err_dev:
 	class_destroy(android_class);
 	return err;

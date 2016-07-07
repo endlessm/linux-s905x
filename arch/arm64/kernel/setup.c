@@ -30,7 +30,6 @@
 #include <linux/screen_info.h>
 #include <linux/init.h>
 #include <linux/kexec.h>
-#include <linux/crash_dump.h>
 #include <linux/root_dev.h>
 #include <linux/clk-provider.h>
 #include <linux/cpu.h>
@@ -55,12 +54,15 @@
 #include <asm/traps.h>
 #include <asm/memblock.h>
 #include <asm/psci.h>
-
+#ifdef CONFIG_AMLOGIC_CPU_INFO
+#include <linux/amlogic/cpu_version.h>
+#endif
 unsigned int processor_id;
 EXPORT_SYMBOL(processor_id);
 
 unsigned long elf_hwcap __read_mostly;
 EXPORT_SYMBOL_GPL(elf_hwcap);
+
 
 #ifdef CONFIG_COMPAT
 #define COMPAT_ELF_HWCAP_DEFAULT	\
@@ -340,6 +342,12 @@ static void __init request_standard_resources(void)
 		    kernel_data.end <= res->end)
 			request_resource(res, &kernel_data);
 	}
+
+#ifdef CONFIG_KEXEC
+	/* User space tools will find "Crash kernel" region in /proc/iomem. */
+	if (crashk_res.end)
+		insert_resource(&iomem_resource, &crashk_res);
+#endif
 }
 
 u64 __cpu_logical_map[NR_CPUS] = { [0 ... NR_CPUS-1] = INVALID_HWID };
@@ -347,10 +355,10 @@ u64 __cpu_logical_map[NR_CPUS] = { [0 ... NR_CPUS-1] = INVALID_HWID };
 void __init setup_arch(char **cmdline_p)
 {
 	/*
-	 * Unmask asynchronous aborts early to catch possible system errors.
-	 */
+	* Unmask asynchronous aborts early to catch possible system errors.
+	*/
 	local_async_enable();
-
+	local_dbg_enable();
 	setup_processor();
 
 	setup_machine_fdt(__fdt_pointer);
@@ -472,7 +480,11 @@ static int c_show(struct seq_file *m, void *v)
 	seq_puts(m, "\n");
 
 	seq_printf(m, "Hardware\t: %s\n", machine_name);
-
+#ifdef CONFIG_AMLOGIC_CPU_INFO
+	seq_printf(m, "Serial\t\t: %08x%08x%08x%08x\n",
+		   system_serial_high1, system_serial_high0,
+		   system_serial_low1, system_serial_low0);
+#endif
 	return 0;
 }
 

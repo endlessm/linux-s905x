@@ -31,7 +31,6 @@
 #include <asm/cputype.h>
 #include <asm/memory.h>
 #include <asm/thread_info.h>
-#include <asm/pgtable-hwdef.h>
 #include <asm/pgtable.h>
 #include <asm/page.h>
 #include <asm/virt.h>
@@ -99,9 +98,9 @@
 	 */
 	b	stext				// branch to kernel start, magic
 	.long	0				// reserved
-	.quad	TEXT_OFFSET			// Image load offset from start of RAM
-	.quad	0				// reserved
-	.quad	0				// reserved
+	.quad	_kernel_offset_le		// Image load offset from start of RAM, little-endian
+	.quad	_kernel_size_le			// Effective size of kernel image, little-endian
+	.quad	_kernel_flags_le		// Informative flags, little-endian
 	.quad	0				// reserved
 	.quad	0				// reserved
 	.quad	0				// reserved

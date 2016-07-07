@@ -245,7 +245,8 @@ static ssize_t ffs_ep0_write(struct file *file, const char __user *buf,
 	char *data;
 
 	ENTER();
-
+	if (!android_usb_inited)
+		return -EIDRM;
 	/* Fast check if setup was canceled */
 	if (FFS_SETUP_STATE(ffs) == FFS_SETUP_CANCELED)
 		return -EIDRM;
@@ -1027,6 +1028,7 @@ ffs_fs_mount(struct file_system_type *t, int flags,
 	ffs->file_perms = data.perms;
 
 	ffs->dev_name = kstrdup(dev_name, GFP_KERNEL);
+
 	if (unlikely(!ffs->dev_name)) {
 		ffs_data_put(ffs);
 		return ERR_PTR(-ENOMEM);
@@ -2192,18 +2194,11 @@ error:
 static int ffs_func_bind(struct usb_configuration *c,
 			 struct usb_function *f)
 {
-	struct f_fs_opts *ffs_opts = ffs_do_functionfs_bind(f, c);
-
-	if (IS_ERR(ffs_opts))
-		return PTR_ERR(ffs_opts);
-
 	return _ffs_func_bind(c, f);
 }
 
 
 /* Other USB function hooks *************************************************/
-
-
 static void old_ffs_func_unbind(struct usb_configuration *c,
 			    struct usb_function *f)
 {
@@ -2221,7 +2216,6 @@ static void old_ffs_func_unbind(struct usb_configuration *c,
 
 	ffs_func_free(func);
 }
-
 
 static int ffs_func_set_alt(struct usb_function *f,
 			    unsigned interface, unsigned alt)
@@ -2478,6 +2472,11 @@ static struct usb_function_instance *ffs_alloc_inst(void)
 	struct f_fs_opts *opts;
 	struct ffs_dev *dev;
 
+	if (!_android_dev) {
+		pr_err("ffs_alloc_inst failed......\n");
+		return ERR_PTR(-ENODEV);
+	}
+
 	opts = kzalloc(sizeof(*opts), GFP_KERNEL);
 	if (!opts)
 		return ERR_PTR(-ENOMEM);
@@ -2493,6 +2492,10 @@ static struct usb_function_instance *ffs_alloc_inst(void)
 	}
 	opts->dev = dev;
 	dev->opts = opts;
+	opts->dev->ffs_ready_callback = functionfs_ready_callback;
+	opts->dev->ffs_closed_callback = functionfs_closed_callback;
+	opts->dev->ffs_acquire_dev_callback = functionfs_acquire_dev_callback;
+	opts->dev->ffs_release_dev_callback = functionfs_release_dev_callback;
 
 	config_group_init_type_name(&opts->func_inst.group, "",
 				    &ffs_func_type);

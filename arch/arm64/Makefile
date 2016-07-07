@@ -15,7 +15,7 @@ CPPFLAGS_vmlinux.lds = -DTEXT_OFFSET=$(TEXT_OFFSET)
 OBJCOPYFLAGS	:=-O binary -R .note -R .note.gnu.build-id -R .comment -S
 GZFLAGS		:=-9
 
-LIBGCC 		:= $(shell $(CC) $(KBUILD_CFLAGS) -print-libgcc-file-name)
+LIBGCC		:= $(shell $(CC) $(KBUILD_CFLAGS) -print-libgcc-file-name)
 
 KBUILD_DEFCONFIG := defconfig
 
@@ -35,11 +35,20 @@ comma = ,
 
 CHECKFLAGS	+= -D__aarch64__
 
+ifeq ($(CONFIG_ARM64_ERRATUM_843419), y)
+KBUILD_CFLAGS_MODULE	+= $(call cc-option,-mfix-cortex-a53-843419)
+endif
+
+ifeq ($(CONFIG_ARM64_ERRATUM_835769), y)
+KBUILD_CFLAGS_MODULE	+= $(call cc-option,-mfix-cortex-a53-835769)
+endif
+$(info KBUILD_CFLAGS_MODULE:$(KBUILD_CFLAGS_MODULE))
+
 # Default value
 head-y		:= arch/arm64/kernel/head.o
 
 # The byte offset of the kernel image in RAM from the start of RAM.
-TEXT_OFFSET := 0x00080000
+TEXT_OFFSET := 0x01080000
 
 export	TEXT_OFFSET GZFLAGS
 
@@ -54,7 +63,7 @@ libs-y		+= $(LIBGCC)
 ifeq ($(CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE),y)
 KBUILD_IMAGE	:= Image.gz-dtb
 else
-KBUILD_IMAGE	:= Image.gz
+KBUILD_IMAGE	:= Image.gz Image.lzo
 endif
 
 KBUILD_DTBS	:= dtbs
@@ -63,14 +72,16 @@ all:	$(KBUILD_IMAGE) $(KBUILD_DTBS)
 
 boot := arch/arm64/boot
 
-Image Image.gz: vmlinux
+Image Image.gz Image.lzo: vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
 zinstall install: vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $@
 
 %.dtb: scripts
-	$(Q)$(MAKE) $(build)=$(boot)/dts $(boot)/dts/$@
+	$(if $(filter $@,$(mesondtb)),\
+	$(Q)$(MAKE) $(build)=$(boot)/dts/amlogic $(boot)/dts/amlogic/$@,\
+	$(Q)$(MAKE) $(build)=customer/$(boot)/dts customer/$(boot)/dts/$@)
 
 dtbs: scripts
 	$(Q)$(MAKE) $(build)=$(boot)/dts dtbs
