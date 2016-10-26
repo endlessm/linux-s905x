@@ -1,0 +1,5 @@
+!/patches
+!*.patch
+!*.diff
+*.pyc
+/po/
