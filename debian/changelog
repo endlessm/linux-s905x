@@ -1,3 +1,9 @@
+linux-s905x (3.14.29-0) eos; urgency=medium
+
+  * Initial packaging
+
+ -- Carlo Caione <carlo@endlessm.com>  Wed, 26 Oct 2016 11:44:07 +0200
+
 linux (3.14.15-2) unstable; urgency=medium
 
   [ Aurelien Jarno ]
