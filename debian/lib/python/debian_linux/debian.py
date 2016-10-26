@@ -118,35 +118,6 @@ class VersionLinux(Version):
 (?P<update>
     \.\d+
 )?
-(?:
-    ~
-    (?P<modifier>
-        .+?
-    )
-)?
-(?:
-    \.dfsg\.
-    (?P<dfsg>
-        \d+
-    )
-)?
--
-\d+
-(\.\d+)?
-(?:
-    (?P<revision_experimental>
-        ~exp\d+
-    )
-    |
-    (?P<revision_backports>
-        ~bpo\d\d\+\d+
-    )
-    |
-    (?P<revision_other>
-        [^-]+
-    )
-)?
-$
 """
     _version_linux_re = re.compile(_version_linux_rules, re.X)
 
@@ -156,18 +127,14 @@ $
         if match is None:
             raise RuntimeError(u"Invalid debian linux version")
         d = match.groupdict()
-        self.linux_modifier = d['modifier']
+        self.linux_modifier = None
         self.linux_version = d['version']
-        if d['modifier'] is not None:
-            assert not d['update']
-            self.linux_upstream = u'-'.join((d['version'], d['modifier']))
-        else:
-            self.linux_upstream = d['version']
+        self.linux_upstream = d['version']
         self.linux_upstream_full = self.linux_upstream + (d['update'] or u'')
-        self.linux_dfsg = d['dfsg']
-        self.linux_revision_experimental = match.group('revision_experimental') and True
-        self.linux_revision_backports = match.group('revision_backports') and True
-        self.linux_revision_other = match.group('revision_other') and True
+        self.linux_dfsg = None
+        self.linux_revision_experimental = False
+        self.linux_revision_backports = False
+        self.linux_revision_other = False
 
 
 class PackageArchitecture(collections.MutableSet):
