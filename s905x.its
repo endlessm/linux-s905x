@@ -1,0 +1,41 @@
+/dts-v1/;
+/ {
+	description = "Amlogic S905X kernel and FDT";
+	#address-cells = <1>;
+
+	images {
+		kernel@1 {
+			description = "Linux 3.x";
+			data = /incbin/("arch/arm64/boot/Image");
+			type = "kernel";
+			arch = "arm64";
+			os = "linux";
+			compression = "none";
+			load = <0x1080000>;
+			entry = <0x1080000>;
+			hash@1 {
+				algo = "crc32";
+			};
+		};
+		fdt@1 {
+			description = "Amlogic S905X Flattened Device Tree blob";
+			data = /incbin/("arch/arm64/boot/dts/endless_s905x.dtb");
+			type = "flat_dt";
+			arch = "arm64";
+			compression = "none";
+			hash@1 {
+				algo = "crc32";
+			};
+		};
+	};
+
+	configurations {
+		default = "s905x";
+		s905x {
+			description = "Boot Endless S905X";
+			kernel = "kernel@1";
+			fdt = "fdt@1";
+		};
+	};
+};
+
