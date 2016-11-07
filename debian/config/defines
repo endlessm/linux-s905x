@@ -5,7 +5,7 @@ ignore-changes:
 [base]
 arches:
  armhf
-compiler: gcc-4.8
+compiler: gcc-4.9
 featuresets:
  none
  rt
@@ -29,6 +29,7 @@ gcc-4.4: gcc-4.4
 gcc-4.6: gcc-4.6
 gcc-4.7: gcc-4.7
 gcc-4.8: gcc-4.8
+gcc-4.9: gcc-4.9
 
 # initramfs-generators
 initramfs-fallback: linux-initramfs-tool

@@ -1,5 +1,6 @@
 [base]
 kernel-arch: arm64
+override-host-type: aarch64-linux-gnu
 featuresets:
  none
 flavours:
