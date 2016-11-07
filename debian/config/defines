@@ -4,30 +4,7 @@ ignore-changes:
 
 [base]
 arches:
- alpha
- amd64
- arm64
- armel
  armhf
- hppa
- i386
- ia64
- m68k
- mips
- mipsel
- mips64
- mips64el
- or1k
- powerpc
- powerpcspe
- ppc64
- ppc64el
- s390
- s390x
- sh4
- sparc
- sparc64
- x32
 compiler: gcc-4.8
 featuresets:
  none
