@@ -2,6 +2,8 @@
 kernel-arch: arm64
 featuresets:
  none
+flavours:
+ s905x
 
 [build]
 debug-info: true
@@ -14,3 +16,7 @@ install-stem: vmlinuz
 hardware: 64-bit ARMv8 machines
 
 [arm64_image]
+
+[s905x_description]
+hardware: Amlogic Meson GXL (S905X)
+hardware-long: ARMv8 Amlogic Meson GXL (S905X)
