@@ -349,7 +349,8 @@ install-image_$(ARCH)_$(FEATURESET)_$(FLAVOUR)_plain:
 	dh_testroot
 	dh_prep
 	dh_installdirs 'boot'
-	install -m644 '$(DIR)/$(IMAGE_FILE)' $(INSTALL_DIR)/$(IMAGE_INSTALL_STEM)-$(REAL_VERSION)
+	cp s905x.its $(DIR)
+	cd $(DIR) && mkimage -f s905x.its ../../../$(INSTALL_DIR)/$(IMAGE_INSTALL_STEM)-$(REAL_VERSION)
 	+$(MAKE_SELF) \
 	  install-image_$(ARCH)_$(FEATURESET)_$(FLAVOUR)_plain_dt \
 	  DIR='$(DIR)' PACKAGE_DIR='$(PACKAGE_DIR)' REAL_VERSION='$(REAL_VERSION)'
