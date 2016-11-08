@@ -17,6 +17,7 @@
 
 #include <linux/kernel.h>
 #include <linux/amlogic/hdmi_tx/hdmi_common.h>
+#include <linux/string.h>
 
 static struct hdmi_format_para fmt_para_1920x1080p60_16x9 = {
 	.vic = HDMI_1920x1080p60_16x9,
