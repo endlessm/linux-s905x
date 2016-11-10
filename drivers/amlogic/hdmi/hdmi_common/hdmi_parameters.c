@@ -1110,18 +1110,16 @@ struct hdmi_format_para *hdmi_get_fmt_name(char const *name)
 	if (!name)
 		return NULL;
 
-	for (i = 0; i < sizeof(all_fmt_paras) /
-		sizeof(struct hdmi_format_para *); i++) {
-		if (!all_fmt_paras[i])
-			break;
-		lname = all_fmt_paras[i]->name;
+	for (i = 0; all_fmt_paras[i] != NULL; i++) {
+		para = all_fmt_paras[i];
+		lname = para->name;
 		if (lname && (strncmp(name, lname, strlen(lname)) == 0)) {
-			vic = all_fmt_paras[i]->vic;
+			vic = para->vic;
 			break;
 		}
-		lname = all_fmt_paras[i]->sname;
+		lname = para->sname;
 		if (lname && (strncmp(name, lname, strlen(lname)) == 0)) {
-			vic = all_fmt_paras[i]->vic;
+			vic = para->vic;
 			break;
 		}
 	}
