@@ -7,14 +7,14 @@ config BCMDHD
 config BCMDHD_FW_PATH
 	depends on BCMDHD
 	string "Firmware path"
-	default "/system/etc/firmware/fw_bcmdhd.bin"
+	default "/lib/firmware/brcm/ap6356s/fw_bcm4356a2_ag.bin"
 	---help---
 	  Path to the firmware file.
 
 config BCMDHD_NVRAM_PATH
 	depends on BCMDHD
 	string "NVRAM path"
-	default "/system/etc/firmware/nvram.txt"
+	default "/lib/firmware/brcm/ap6356s/nvram_ap6356.txt"
 	---help---
 	  Path to the calibration file.
 
@@ -47,7 +47,6 @@ choice
 config BCMDHD_OOB
 	depends on BCMDHD && BCMDHD_SDIO
 	bool "Out-of-Band Interrupt"
-	default y
 	---help---
 		Interrupt from WL_HOST_WAKE.
 config BCMDHD_SDIO_IRQ
