@@ -5,7 +5,6 @@
 CONFIG_BCMDHD_SDIO := y
 #CONFIG_BCMDHD_PCIE := y
 
-export CONFIG_BCMDHD = m
 export CONFIG_BCMDHD_OOB = y
 
 DHDCFLAGS = -Wall -Wstrict-prototypes -Dlinux -DBCMDRIVER -DSDTEST       \
