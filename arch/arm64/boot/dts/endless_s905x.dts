@@ -117,13 +117,13 @@
 			linux,contiguous-region;
 			status = "disable";
 		};
-		picdec_cma_reserved:linux,picdec {
-			compatible = "shared-dma-pool";
-			reusable;
-			size = <0x0 0x0>;
-			alignment = <0x0 0x0>;
-			linux,contiguous-region;
-		};
+//		picdec_cma_reserved:linux,picdec {
+//			compatible = "shared-dma-pool";
+//			reusable;
+//			size = <0x0 0x0>;
+//			alignment = <0x0 0x0>;
+//			linux,contiguous-region;
+//		};
 		/* codec shared reserved */
 		codec_mm_reserved:linux,codec_mm_reserved {
 			compatible = "amlogic, codec-mm-reserved";
@@ -266,12 +266,12 @@
 			"mailbox_1",
 			"mailbox_2";
 	};
-	picdec {
-		   compatible = "amlogic, picdec";
-		   memory-region = <&picdec_cma_reserved>;
-		   dev_name = "picdec";
-		   status = "okay";
-	};
+//	picdec {
+//		   compatible = "amlogic, picdec";
+//		   memory-region = <&picdec_cma_reserved>;
+//		   dev_name = "picdec";
+//		   status = "okay";
+//	};
 	ppmgr {
 		compatible = "amlogic, ppmgr";//to match of_device_id's compatible member
 		memory-region = <&ppmgr_reserved>;
@@ -839,7 +839,8 @@
 		compatible = "synopsys, dwc3";
 		reg = <0x0 0xc9000000 0x0 0x100000>;
 		interrupts = <0 30 4>;
-		usb-phy = <&usb2_phy>, <&usb3_phy>;
+//		usb-phy = <&usb2_phy>, <&usb3_phy>;
+		usb-phy = <&usb2_phy>;
 		cpu-type = "gxl";
 		clock-src = "usb3.0";
 	};
@@ -850,11 +851,11 @@
 		reg = <0x0 0xd0078000 0x0 0x80>;
 	};
 
-	usb3_phy: usb3phy@d0078080 {
-		compatible = "amlogic, amlogic-new-usb3";
-		portnum = <0>;
-		reg = <0x0 0xd0078080 0x0 0x20>;
-	};
+//	usb3_phy: usb3phy@d0078080 {
+//		compatible = "amlogic, amlogic-new-usb3";
+//		portnum = <0>;
+//		reg = <0x0 0xd0078080 0x0 0x20>;
+//	};
 
 	dwc2_a {
 		compatible = "amlogic,dwc2";
