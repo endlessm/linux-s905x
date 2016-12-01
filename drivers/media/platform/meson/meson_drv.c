@@ -14,6 +14,7 @@
 #include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/amlogic/amports/ptsserv.h>
 
 #include <linux/amlogic/amports/amstream.h>
 #include <linux/amlogic/amports/vformat.h>
@@ -74,6 +75,38 @@ struct vdec_ctx {
 	u32 frame_height;
 };
 
+void debug_file_write(char *f_prefix, const char __user *buf, size_t count)
+{
+	mm_segment_t old_fs;
+	char fname[64];
+	static int i = 0;
+	loff_t debug_file_pos = 0;
+	static struct file *debug_filp;
+
+	sprintf(fname, "/tmp/%s_%d", f_prefix, i);
+	i++;
+
+	debug_filp = filp_open(fname, O_RDWR | O_CREAT, 0);
+	if (IS_ERR(debug_filp)) {
+		pr_err("amstream: open debug file failed\n");
+		debug_filp = NULL;
+	}
+
+	if (!debug_filp)
+		return;
+
+	old_fs = get_fs();
+	set_fs(KERNEL_DS);
+
+	if (count != vfs_write(debug_filp, buf, count, &debug_file_pos))
+		pr_err("Failed to write debug file\n");
+
+	set_fs(old_fs);
+	filp_close(debug_filp, current->files);
+
+	return;
+}
+
 static inline struct vdec_ctx *file2ctx(struct file *file)
 {
 	return container_of(file->private_data, struct vdec_ctx, fh);
@@ -82,18 +115,6 @@ static inline struct vdec_ctx *file2ctx(struct file *file)
 /*
  * Amlogic callbacks
  */
-static void parser_cb(void *data)
-{
-	struct vdec_ctx *ctx = data;
-	struct vb2_buffer *src_buf;
-
-	/* Compressed video has been parsed into the decoder FIFO, so we can
-	 * return this buffer to userspace. */
-	v4l2_info(&ctx->dev->v4l2_dev, "esparser reports completion\n");
-	src_buf = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
-	v4l2_m2m_buf_done(src_buf, VB2_BUF_STATE_DONE);
-	v4l2_m2m_job_finish(ctx->dev->m2m_dev, ctx->m2m_ctx);
-}
 
 // FIXME should be a VF message
 static void h264_params_cb(void *data, int status, u32 width, u32 height)
@@ -112,10 +133,25 @@ static void h264_params_cb(void *data, int status, u32 width, u32 height)
 		return;
 	}
 
-	ctx->frame_width = width;
-	ctx->frame_height = height;
+//	ctx->frame_width = width;
+//	ctx->frame_height = height;
 	ctx->hdr_parse_state = HEADER_PARSED;
 	v4l2_event_queue_fh(&ctx->fh, &ev);
+}
+
+static void parser_cb(void *data)
+{
+	struct vdec_ctx *ctx = data;
+	struct vb2_buffer *src_buf;
+
+	/* Compressed video has been parsed into the decoder FIFO, so we can
+	 * return this buffer to userspace. */
+	v4l2_info(&ctx->dev->v4l2_dev, "esparser reports completion\n");
+	src_buf = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
+	v4l2_m2m_buf_done(src_buf, VB2_BUF_STATE_DONE);
+	v4l2_m2m_job_finish(ctx->dev->m2m_dev, ctx->m2m_ctx);
+	if (ctx->hdr_parse_state != HEADER_PARSED)
+		h264_params_cb(data, 0, 0, 0);
 }
 
 /*
@@ -124,7 +160,9 @@ static void h264_params_cb(void *data, int status, u32 width, u32 height)
 static void send_to_parser(struct vdec_ctx *ctx, struct vb2_buffer *buf)
 {
 	dma_addr_t phys_addr = vb2_dma_contig_plane_dma_addr(buf, 0);
+//	uint8_t *dp = (uint8_t *) vb2_plane_vaddr(buf, 0);
 	unsigned long size = vb2_get_plane_payload(buf, 0);
+//	debug_file_write("to_sparser", dp, size);
 
 	v4l2_info(&ctx->dev->v4l2_dev,
 		  "send src buffer %d to parser, phys addr %llx size %ld\n",
@@ -217,8 +255,8 @@ static int vidioc_enum_fmt_vid_out(struct file *file, void *priv,
 	struct vdec_ctx *ctx = file2ctx(file);
 	v4l2_info(&ctx->dev->v4l2_dev, "enum_fmt_vid_out\n");
 
-	snprintf(f->description, sizeof(f->description), "H264");
-	f->pixelformat = V4L2_PIX_FMT_H264;
+	snprintf(f->description, sizeof(f->description), "VP9");
+	f->pixelformat = V4L2_PIX_FMT_VP9;
 	return 0;
 }
 
@@ -228,7 +266,7 @@ static int vidioc_g_fmt_vid_out(struct file *file, void *priv,
 	struct vdec_ctx *ctx = file2ctx(file);
 	v4l2_info(&ctx->dev->v4l2_dev, "g_fmt_vid_out\n");
 
-	f->fmt.pix_mp.pixelformat = V4L2_PIX_FMT_H264;
+	f->fmt.pix_mp.pixelformat = V4L2_PIX_FMT_VP9;
 	f->fmt.pix_mp.width = f->fmt.pix_mp.height = 0;
 	f->fmt.pix_mp.field = V4L2_FIELD_NONE;
 	f->fmt.pix_mp.num_planes = 1;
@@ -291,7 +329,7 @@ static int vidioc_try_fmt_vid_out(struct file *file, void *priv,
 	v4l2_info(&ctx->dev->v4l2_dev, "ioc_try_fmt_vid_out\n");
 
 	/* FIXME: set sizeimage too? */
-	f->fmt.pix_mp.pixelformat = V4L2_PIX_FMT_H264;
+	f->fmt.pix_mp.pixelformat = V4L2_PIX_FMT_VP9;
 	f->fmt.pix_mp.num_planes = 1;
 	f->fmt.pix_mp.plane_fmt[0].bytesperline = 0;
 	return 0;
@@ -321,7 +359,7 @@ static int vidioc_s_fmt_vid_out(struct file *file, void *priv,
 {
 	/* FIXME should check format */
 	// FIXME how does this hook up with the buffer sizes used in reqbufs? */
-	f->fmt.pix_mp.plane_fmt[0].sizeimage = 512 * 1024;
+	f->fmt.pix_mp.plane_fmt[0].sizeimage = 1024 * 1024;
 
 	return 0;
 }
@@ -330,6 +368,7 @@ static int vidioc_reqbufs(struct file *file, void *priv,
 			  struct v4l2_requestbuffers *reqbufs)
 {
 	struct vdec_ctx *ctx = file2ctx(file);
+	int ret;
 
 	v4l2_info(&ctx->dev->v4l2_dev, "reqbufs type %d\n", reqbufs->type);
 
@@ -338,7 +377,9 @@ static int vidioc_reqbufs(struct file *file, void *priv,
 	else
 		ctx->dst_bufs_cnt = 0;
 
-	return v4l2_m2m_reqbufs(file, ctx->m2m_ctx, reqbufs);
+	ret = v4l2_m2m_reqbufs(file, ctx->m2m_ctx, reqbufs);
+
+	return ret;
 }
 
 static int vidioc_querybuf(struct file *file, void *priv,
@@ -439,6 +480,7 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 		if (!buf)
 			return -ENOENT;
 
+	//	ctx->hdr_parse_state = HEADER_PARSED;
 		ctx->hdr_parse_state = HEADER_PARSING;
 		send_to_parser(ctx, buf);
 	}
@@ -481,12 +523,13 @@ static int vdec_src_queue_setup(struct vb2_queue *vq,
 	*nplanes = 1;
 
 	// FIXME is 512kb sensible?
-	sizes[0] = 512 * 1024;
+	sizes[0] = 1024 * 1024;
 
 	alloc_ctxs[0] = ctx->dev->vb_alloc_ctx;
 
 	v4l2_info(&ctx->dev->v4l2_dev,
 		  "get %d buffer(s) of size %d each.\n", *nplanes, sizes[0]);
+
 
 	return 0;
 }
@@ -663,6 +706,11 @@ static int image_thread(void *data) {
 			vf_put(vf, RECEIVER_NAME);
 			continue;
 		}
+//		{
+//			uint8_t *dp = (uint8_t *) vb2_plane_vaddr(dst, 0);
+//			unsigned long size = vb2_get_plane_payload(dst, 0);
+//			debug_file_write("to_GE2D", dp, size);
+//		}
 
 		vdec_process_image(ctx->dev, vf, dst);
 		vf_put(vf, RECEIVER_NAME);
@@ -702,8 +750,8 @@ static int meson_vdec_open(struct file *file)
 	struct vdec_dev *dev = video_drvdata(file);
 	struct vdec_ctx *ctx = NULL;
 	int ret = 0;
-	stream_port_t *port = amstream_find_port("amstream_vbuf");
-	stream_buf_t *sbuf = get_buf_by_type(BUF_TYPE_VIDEO);
+	stream_port_t *port = amstream_find_port("amstream_hevc");
+	stream_buf_t *sbuf = get_buf_by_type(PTS_TYPE_HEVC);
 
 	v4l2_info(&dev->v4l2_dev, "vdec_open\n");
 	if (!port)
@@ -719,11 +767,16 @@ static int meson_vdec_open(struct file *file)
 	}
 
 	esparser_set_search_done_cb(ctx, parser_cb);
-	vh264_set_params_cb(ctx, h264_params_cb);
+//	vh264_set_params_cb(ctx, h264_params_cb);
 	v4l2_fh_init(&ctx->fh, video_devdata(file));
 	file->private_data = &ctx->fh;
 	ctx->dev = dev;
 	ctx->hdr_parse_state = HEADER_NOT_PARSED;
+//	ctx->hdr_parse_state = HEADER_PARSED;
+	
+	// TODO: CC
+	ctx->frame_width = 512;
+	ctx->frame_height = 288;
 
 	ctx->buf_vaddr = dma_alloc_coherent(dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE,
 					    (dma_addr_t *) &sbuf->buf_start, GFP_KERNEL);
@@ -749,15 +802,19 @@ static int meson_vdec_open(struct file *file)
 
 	v4l2_fh_add(&ctx->fh);
 
+	/* in amstream.open() */
 	amstream_port_open(port);
-	/* enable sync_outside and pts_outside */
-	amstream_dec_info.param = (void *) 0x3;
+//	/* enable sync_outside and pts_outside */
+//	amstream_dec_info.param = (void *) 0x3;
 
 	vf_receiver_init(&ctx->vf_receiver, RECEIVER_NAME, &vf_receiver, ctx);
 	vf_reg_receiver(&ctx->vf_receiver);
 
-	port->vformat = VFORMAT_H264;
+	/* AMSTREAM_SET_VFORMAT ioctl is sent and vformat is set to VFORMAT_VP9. */
+	port->vformat = VFORMAT_VP9;
+//	port->vformat = VFORMAT_HEVC;
 	port->flag |= PORT_FLAG_VFORMAT;
+
 	ret = video_port_init(port, sbuf);
 	if (ret)
 		goto err_release_port;
@@ -767,7 +824,7 @@ open_unlock:
 	return ret;
 
 err_release_port:
-	amstream_port_release(amstream_find_port("amstream_vbuf"));
+	amstream_port_release(amstream_find_port("amstream_hevc"));
 	v4l2_fh_del(&ctx->fh);
 
 err_stop_thread:
@@ -785,11 +842,11 @@ static int meson_vdec_release(struct file *file)
 {
 	struct vdec_dev *dev = video_drvdata(file);
 	struct vdec_ctx *ctx = file2ctx(file);
-	stream_buf_t *sbuf = get_buf_by_type(BUF_TYPE_VIDEO);
+	stream_buf_t *sbuf = get_buf_by_type(PTS_TYPE_HEVC);
 
 	v4l2_info(&ctx->dev->v4l2_dev, "vdec_release\n");
 
-	amstream_port_release(amstream_find_port("amstream_vbuf"));
+	amstream_port_release(amstream_find_port("amstream_hevc"));
 	vf_unreg_receiver(&ctx->vf_receiver);
 	v4l2_fh_del(&ctx->fh);
 	v4l2_fh_exit(&ctx->fh);
