@@ -5178,6 +5178,7 @@ static irqreturn_t vvp9_isr(int irq, void *data)
 
 	if (dec_status == VP9_EOS) {
 		pr_info("VP9_EOS, flush buffer\r\n");
+		printk(KERN_EMERG "[%s] ==> VP9_EOS, flush buffer\n", __func__);
 
 		vp9_bufmgr_postproc(pbi);
 
@@ -5192,7 +5193,6 @@ static irqreturn_t vvp9_isr(int irq, void *data)
 		printk(KERN_EMERG "[%s] ==> dec_status != VP9_HEAD_PARSER_DONE\n", __func__);
 		return IRQ_HANDLED;
 	}
-	printk(KERN_EMERG "[%s] ==> pbi->frame_count: %d\n", __func__, pbi->frame_count);
 	if (pbi->frame_count > 0) {
 		printk(KERN_EMERG "[%s] ==> pbi->frame_count > 0\n", __func__);
 		vp9_bufmgr_postproc(pbi);

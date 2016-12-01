@@ -153,6 +153,7 @@ void esparser_start_search(u32 parser_type, u32 phys_addr, u32 len)
 {
 	/* wmb(); don't need */
 	/* reset the Write and read pointer to zero again */
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	WRITE_MPEG_REG(PFIFO_RD_PTR, 0);
 	WRITE_MPEG_REG(PFIFO_WR_PTR, 0);
 
@@ -186,6 +187,7 @@ static ssize_t _esparser_write(const char __user *buf,
 	int ret;
 	u32 wp;
 	dma_addr_t dma_addr = 0;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 
 	if (type == BUF_TYPE_HEVC)
 		parser_type = PARSER_VIDEO;

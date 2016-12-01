@@ -3230,6 +3230,7 @@ static struct platform_driver amstream_driver = {
 static int __init amstream_module_init(void)
 {
 	int ret;
+	printk(KERN_EMERG "[%s] Enter\n", __func__);
 
 	vdec_set_decinfo(&amstream_dec_info);
 	if (has_hevc_vdec()) {
