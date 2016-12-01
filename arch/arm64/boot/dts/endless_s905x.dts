@@ -24,7 +24,7 @@
 / {
 	model = "Amlogic";
 	amlogic-dt-id = "gxl_p212_2g";
-	compatible = "amlogic, Gxbb";
+	compatible = "hwacom,hc-j3710", "amlogic, Gxbb";
 	interrupt-parent = <&gic>;
 	#address-cells = <2>;
 	#size-cells = <2>;
