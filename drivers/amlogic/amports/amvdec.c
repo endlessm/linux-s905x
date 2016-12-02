@@ -705,7 +705,7 @@ void amvdec2_disable(void)
 }
 
 void amhevc_enable(void)
-{ 
+{
 	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	if (has_hevc_vdec())
 		amhevc_pg_enable(true);

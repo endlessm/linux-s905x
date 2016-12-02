@@ -47,6 +47,7 @@ void *fetchbuf = 0;
 
 static s32 _stbuf_alloc(struct stream_buf_s *buf)
 {
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	if (buf->buf_size == 0)
 		return -ENOBUFS;
 
@@ -271,6 +272,7 @@ s32 stbuf_init(struct stream_buf_s *buf)
 	s32 r;
 	u32 dummy;
 	u32 addr32;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 
 	if (!buf->buf_start) {
 		r = _stbuf_alloc(buf);

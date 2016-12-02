@@ -153,7 +153,7 @@ void esparser_start_search(u32 parser_type, u32 phys_addr, u32 len)
 {
 	/* wmb(); don't need */
 	/* reset the Write and read pointer to zero again */
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
+	printk(KERN_EMERG "[%s] ==> Enter (len: %d, parser_type: %d, phys_addr: 0x%08x)\n", __func__, len, parser_type, phys_addr);
 	WRITE_MPEG_REG(PFIFO_RD_PTR, 0);
 	WRITE_MPEG_REG(PFIFO_WR_PTR, 0);
 

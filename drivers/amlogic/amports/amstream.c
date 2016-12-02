@@ -491,7 +491,7 @@ int video_port_init(struct stream_port_s *port,
 		    struct stream_buf_s *pbuf)
 {
 	int r;
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
+	printk(KERN_EMERG "[%s] ==> Enter (pbuf->buf_size: %d)\n", __func__, pbuf->buf_size);
 	if ((port->flag & PORT_FLAG_VFORMAT) == 0) {
 		pr_err("vformat not set\n");
 		return -EPERM;

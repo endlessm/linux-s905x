@@ -1531,6 +1531,7 @@ int vp9_get_raw_frame(struct VP9Decoder_s *pbi, struct PIC_BUFFER_CONFIG_s *sd)
 	struct VP9_Common_s *const cm = &pbi->common;
 	int ret = -1;
 
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	if (pbi->ready_for_new_data == 1)
 		return ret;
 
@@ -3653,6 +3654,7 @@ static int config_pic_size(struct VP9Decoder_s *pbi, unsigned short bit_depth)
 	int losless_comp_header_size, losless_comp_body_size;
 	struct VP9_Common_s *cm = &pbi->common;
 	struct PIC_BUFFER_CONFIG_s *cur_pic_config = &cm->cur_frame->buf;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	frame_width = cur_pic_config->y_crop_width;
 	frame_height = cur_pic_config->y_crop_height;
 	cur_pic_config->bit_depth = bit_depth;
@@ -3702,6 +3704,7 @@ static int config_mc_buffer(struct VP9Decoder_s *pbi, unsigned short bit_depth)
 
 	if (debug&VP9_DEBUG_BUFMGR)
 		pr_info("config_mc_buffer entered .....\n");
+	printk(KERN_EMERG "[%s] ==> config_mc_buffer entered .....\n", __func__);
 
 	WRITE_VREG(HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR,
 			(0 << 8) | (0 << 1) | 1);
@@ -5128,17 +5131,20 @@ static irqreturn_t vvp9_isr(int irq, void *data)
 	}
 
 	if (pbi->error_flag == 1) {
+		printk(KERN_EMERG "[%s] ==> pbi->error_flag == 1\n", __func__);
 		pbi->error_flag = 2;
 		pbi->process_busy = 0;
 		printk(KERN_EMERG "[%s] ==> pbi->error_flag == 1\n", __func__);
 		return IRQ_HANDLED;
 	} else if (pbi->error_flag == 3) {
+		printk(KERN_EMERG "[%s] ==> pbi->error_flag == 3\n", __func__);
 		pbi->process_busy = 0;
 		printk(KERN_EMERG "[%s] ==> pbi->error_flag == 3\n", __func__);
 		return IRQ_HANDLED;
 	}
 
 	if (is_buffer_empty(cm)) {
+		printk(KERN_EMERG "[%s] ==> is_buffer_empty(cm)\n", __func__);
 		/*
 		if (pbi->wait_buf == 0)
 			pr_info("set wait_buf to 1\r\n");
@@ -5193,6 +5199,8 @@ static irqreturn_t vvp9_isr(int irq, void *data)
 		printk(KERN_EMERG "[%s] ==> dec_status != VP9_HEAD_PARSER_DONE\n", __func__);
 		return IRQ_HANDLED;
 	}
+
+	printk(KERN_EMERG "[%s] ==> pbi->frame_count: %d\n", __func__, pbi->frame_count);
 	if (pbi->frame_count > 0) {
 		printk(KERN_EMERG "[%s] ==> pbi->frame_count > 0\n", __func__);
 		vp9_bufmgr_postproc(pbi);

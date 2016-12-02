@@ -167,6 +167,7 @@ static void send_to_parser(struct vdec_ctx *ctx, struct vb2_buffer *buf)
 	v4l2_info(&ctx->dev->v4l2_dev,
 		  "send src buffer %d to parser, phys addr %llx size %ld\n",
 		  buf->v4l2_buf.index, phys_addr, size);
+	printk(KERN_EMERG "[%s] ==> send src buffer %d to parser, phys addr %llx size %ld\n", __func__, buf->v4l2_buf.index, phys_addr, size);
 	esparser_start_search(PARSER_VIDEO, phys_addr, size);
 }
 
@@ -752,6 +753,7 @@ static int meson_vdec_open(struct file *file)
 	int ret = 0;
 	stream_port_t *port = amstream_find_port("amstream_hevc");
 	stream_buf_t *sbuf = get_buf_by_type(PTS_TYPE_HEVC);
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 
 	v4l2_info(&dev->v4l2_dev, "vdec_open\n");
 	if (!port)
@@ -778,15 +780,15 @@ static int meson_vdec_open(struct file *file)
 	ctx->frame_width = 512;
 	ctx->frame_height = 288;
 
-	ctx->buf_vaddr = dma_alloc_coherent(dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE,
-					    (dma_addr_t *) &sbuf->buf_start, GFP_KERNEL);
-	if (!ctx->buf_vaddr) {
-		ret = -ENOMEM;
-		goto err_free_ctx;
-	}
+//	ctx->buf_vaddr = dma_alloc_coherent(dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE,
+//					    (dma_addr_t *) &sbuf->buf_start, GFP_KERNEL);
+//	if (!ctx->buf_vaddr) {
+//		ret = -ENOMEM;
+//		goto err_free_ctx;
+//	}
 
-	sbuf->buf_size = sbuf->default_buf_size = VDEC_ST_FIFO_SIZE;
-	sbuf->flag = BUF_FLAG_IOMEM;
+//	sbuf->buf_size = sbuf->default_buf_size = VDEC_ST_FIFO_SIZE;
+//	sbuf->flag = BUF_FLAG_IOMEM;
 
 	ctx->image_thread = kthread_run(image_thread, ctx, DRIVER_NAME);
 	if (IS_ERR(ctx->image_thread)) {
@@ -831,8 +833,8 @@ err_stop_thread:
 	kthread_stop(ctx->image_thread);
 
 err_free_buf:
-	dma_free_coherent(dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
-			  sbuf->buf_start);
+//	dma_free_coherent(dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
+//			  sbuf->buf_start);
 err_free_ctx:
 	kfree(ctx);
 	goto open_unlock;
@@ -853,8 +855,8 @@ static int meson_vdec_release(struct file *file)
 	mutex_lock(&dev->dev_mutex);
 	v4l2_m2m_ctx_release(ctx->m2m_ctx);
 	kthread_stop(ctx->image_thread);
-	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
-		          sbuf->buf_start);
+//	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
+//		          sbuf->buf_start);
 
 	mutex_unlock(&dev->dev_mutex);
 	kfree(ctx);
