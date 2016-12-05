@@ -839,8 +839,7 @@
 		compatible = "synopsys, dwc3";
 		reg = <0x0 0xc9000000 0x0 0x100000>;
 		interrupts = <0 30 4>;
-//		usb-phy = <&usb2_phy>, <&usb3_phy>;
-		usb-phy = <&usb2_phy>;
+		usb-phy = <&usb2_phy>, <&usb3_phy>;
 		cpu-type = "gxl";
 		clock-src = "usb3.0";
 	};
@@ -851,11 +850,11 @@
 		reg = <0x0 0xd0078000 0x0 0x80>;
 	};
 
-//	usb3_phy: usb3phy@d0078080 {
-//		compatible = "amlogic, amlogic-new-usb3";
-//		portnum = <0>;
-//		reg = <0x0 0xd0078080 0x0 0x20>;
-//	};
+	usb3_phy: usb3phy@d0078080 {
+		compatible = "amlogic, amlogic-new-usb3";
+		portnum = <0>;
+		reg = <0x0 0xd0078080 0x0 0x20>;
+	};
 
 	dwc2_a {
 		compatible = "amlogic,dwc2";
