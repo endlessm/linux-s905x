@@ -198,6 +198,7 @@ static u32 frame_width;
 static u32 frame_height;
 static u32 video_signal_type;
 static u32 pts_unstable;
+static u32 on_no_keyframe_skiped;
 
 
 #define PROB_SIZE    (496 * 2 * 4)
@@ -1154,15 +1155,17 @@ int vp9_bufmgr_process(struct VP9Decoder_s *pbi, union param_u *params)
 	struct BufferPool_s *pool = cm->buffer_pool;
 	struct RefCntBuffer_s *frame_bufs = cm->buffer_pool->frame_bufs;
 	int i, mask, ref_index = 0;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 
 	pbi->ready_for_new_data = 0;
 
 	if (pbi->has_keyframe == 0 &&
 		params->p.frame_type != KEY_FRAME){
+		on_no_keyframe_skiped++;
 		return -2;
 	}
 	pbi->has_keyframe = 1;
-
+	on_no_keyframe_skiped = 0;
 #ifdef VP9_10B_MMU
 	if (cm->prev_fb_idx >= 0) {
 		long used_4k_num = (READ_VREG(HEVC_SAO_MMU_STATUS) >> 16);
@@ -1548,6 +1551,7 @@ int vp9_get_raw_frame(struct VP9Decoder_s *pbi, struct PIC_BUFFER_CONFIG_s *sd)
 int vp9_bufmgr_init(struct VP9Decoder_s *pbi, struct BuffInfo_s *buf_spec_i,
 		struct buff_s *mc_buf_i) {
 	struct VP9_Common_s *cm = &pbi->common;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 
 	/*memset(pbi, 0, sizeof(struct VP9Decoder));*/
 	pbi->frame_count = 0;
@@ -1604,6 +1608,7 @@ int vp9_bufmgr_postproc(struct VP9Decoder_s *pbi)
 {
 	struct VP9_Common_s *cm = &pbi->common;
 	struct PIC_BUFFER_CONFIG_s sd;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	swap_frame_buffers(pbi);
 	if (!cm->show_existing_frame) {
 		cm->last_show_frame = cm->show_frame;
@@ -2039,7 +2044,6 @@ static  int  compute_losless_comp_header_size(int width, int height)
 
 static void init_buff_spec(struct BuffInfo_s *buf_spec)
 {
-	void *mem_start_virt;
 	buf_spec->ipp.buf_start = buf_spec->start_adr;
 	buf_spec->sao_abv.buf_start =
 		buf_spec->ipp.buf_start + buf_spec->ipp.buf_size;
@@ -2104,11 +2108,6 @@ static void init_buff_spec(struct BuffInfo_s *buf_spec)
 				buf_spec->rpm.buf_size;
 		}
 	}
-	mem_start_virt = codec_mm_phys_to_virt(buf_spec->dblk_para.buf_start);
-	if (mem_start_virt)
-		memset(mem_start_virt, 0, buf_spec->dblk_para.buf_size);
-	else
-		pr_err("mem_start_virt failed\n");
 
 	if (debug) {
 		pr_info("%s workspace (%x %x) size = %x\n", __func__,
@@ -4315,6 +4314,7 @@ static void vp9_init_decoder_hw(void)
 {
 	unsigned int data32;
 	int i;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 
 	pr_info("[test.c] Entering vp9_init_decoder_hw\n");
 
@@ -4570,6 +4570,7 @@ static int vp9_local_init(struct VP9Decoder_s *pbi)
 	/*int losless_comp_header_size, losless_comp_body_size;*/
 
 	struct BuffInfo_s *cur_buf_info = NULL;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	memset(&pbi->param, 0, sizeof(union param_u));
 
 #ifdef SUPPORT_4K2K
@@ -4892,6 +4893,7 @@ static int prepare_display_buf(struct VP9Decoder_s *pbi,
 	struct vframe_s *vf = NULL;
 	int stream_offset = pic_config->stream_offset;
 	unsigned short slice_type = pic_config->slice_type;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 
 	if (debug & VP9_DEBUG_BUFMGR)
 		pr_info("%s index = %d\r\n", __func__, pic_config->index);
@@ -5046,6 +5048,7 @@ static int prepare_display_buf(struct VP9Decoder_s *pbi,
 		if ((debug & VP9_DEBUG_VF_REF) == 0)
 			inc_vf_ref(pbi, pic_config->index);
 		kfifo_put(&pbi->display_q, (const struct vframe_s *)vf);
+		printk(KERN_EMERG "[%s] ==> Sending VFRAME_EVENT_PROVIDER_VFRAME_READY\n", __func__);
 		vf_notify_receiver(PROVIDER_NAME,
 				VFRAME_EVENT_PROVIDER_VFRAME_READY, NULL);
 	}
@@ -5080,14 +5083,18 @@ static irqreturn_t vvp9_isr(int irq, void *data)
 	struct VP9Decoder_s *pbi = (struct VP9Decoder_s *)data;
 	unsigned int adapt_prob_status;
 	struct VP9_Common_s *const cm = &pbi->common;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	dec_status = READ_VREG(HEVC_DEC_STATUS_REG);
 	adapt_prob_status = READ_VREG(VP9_ADAPT_PROB_REG);
-	if (pbi->init_flag == 0)
+	if (pbi->init_flag == 0) {
+		printk(KERN_EMERG "[%s] ==> pbi->init_flag == 0\n", __func__);
 		return IRQ_HANDLED;
+	}
 
 	pbi->process_busy = 1;
 	if (debug & VP9_DEBUG_BUFMGR)
 		pr_info("vp9 isr dec status  = %d\n", dec_status);
+	printk(KERN_EMERG "[%s] ==> vp9 isr dec status  = %d\n", __func__, dec_status);
 
 	if (debug & VP9_DEBUG_UCODE) {
 		if (READ_HREG(DEBUG_REG1) & 0x10000) {
@@ -5123,9 +5130,11 @@ static irqreturn_t vvp9_isr(int irq, void *data)
 	if (pbi->error_flag == 1) {
 		pbi->error_flag = 2;
 		pbi->process_busy = 0;
+		printk(KERN_EMERG "[%s] ==> pbi->error_flag == 1\n", __func__);
 		return IRQ_HANDLED;
 	} else if (pbi->error_flag == 3) {
 		pbi->process_busy = 0;
+		printk(KERN_EMERG "[%s] ==> pbi->error_flag == 3\n", __func__);
 		return IRQ_HANDLED;
 	}
 
@@ -5153,6 +5162,7 @@ static irqreturn_t vvp9_isr(int irq, void *data)
 	uint8_t *cur_prob_b =
 		((uint8_t *)pbi->prob_buffer_addr) + 0x4000;
 	uint8_t *count_b = (uint8_t *)pbi->count_buffer_addr;
+	printk(KERN_EMERG "[%s] ==> (adapt_prob_status & 0xff) == 0xfd\n", __func__);
 
 	adapt_coef_probs(pbi->pic_count, (cm->last_frame_type == KEY_FRAME),
 			pre_fc, (adapt_prob_status >> 8),
@@ -5179,10 +5189,14 @@ static irqreturn_t vvp9_isr(int irq, void *data)
 
 	if (dec_status != VP9_HEAD_PARSER_DONE) {
 		pbi->process_busy = 0;
+		printk(KERN_EMERG "[%s] ==> dec_status != VP9_HEAD_PARSER_DONE\n", __func__);
 		return IRQ_HANDLED;
 	}
-	if (pbi->frame_count > 0)
+	printk(KERN_EMERG "[%s] ==> pbi->frame_count: %d\n", __func__, pbi->frame_count);
+	if (pbi->frame_count > 0) {
+		printk(KERN_EMERG "[%s] ==> pbi->frame_count > 0\n", __func__);
 		vp9_bufmgr_postproc(pbi);
+	}
 
 	if (debug & VP9_DEBUG_SEND_PARAM_WITH_REG) {
 		get_rpm_param(&vp9_param);
@@ -5274,61 +5288,64 @@ if (debug & VP9_DEBUG_DBG_LF_PRINT) {
 	if (ret < 0) {
 		pr_info("vp9_bufmgr_process=> %d, VP9_10B_DISCARD_NAL\r\n",
 		 ret);
+		printk(KERN_EMERG "[%s] ==> vp9_bufmgr_process=> %d, VP9_10B_DISCARD_NAL\r\n", __func__, ret);
 		WRITE_VREG(HEVC_DEC_STATUS_REG, VP9_10B_DISCARD_NAL);
 		pbi->process_busy = 0;
 		return IRQ_HANDLED;
 	} else if (ret == 0) {
 		pbi->frame_count++;
 		/*pr_info("Decode Frame Data %d\n", pbi->frame_count);*/
+		printk(KERN_EMERG "[%s] ==> ret == 0 from vp9_bufmgr_process()", __func__);
 		config_pic_size(pbi, vp9_param.p.bit_depth);
 		if ((pbi->common.frame_type != KEY_FRAME)
 			&& (!pbi->common.intra_only)) {
 			config_mc_buffer(pbi, vp9_param.p.bit_depth);
 			config_mpred_hw(pbi);
-	} else {
-		clear_mpred_hw(pbi);
-	}
+		} else {
+			clear_mpred_hw(pbi);
+		}
 #ifdef MCRCC_ENABLE
-	config_mcrcc_axi_hw(pbi);
+		config_mcrcc_axi_hw(pbi);
 #endif
-	config_sao_hw(pbi, &vp9_param);
+		config_sao_hw(pbi, &vp9_param);
 
 #ifdef VP9_LPF_LVL_UPDATE
-    /*
-     * Get loop filter related picture level parameters from Parser
-     */
-	lf->mode_ref_delta_enabled = vp9_param.p.mode_ref_delta_enabled;
-	lf->sharpness_level = vp9_param.p.sharpness_level;
-	for (i = 0; i < 4; i++)
-		lf->ref_deltas[i] = vp9_param.p.ref_deltas[i];
-	for (i = 0; i < 2; i++)
-		lf->mode_deltas[i] = vp9_param.p.mode_deltas[i];
-	default_filt_lvl = vp9_param.p.filter_level;
-	seg_4lf->enabled = vp9_param.p.seg_enabled;
-	seg_4lf->abs_delta = vp9_param.p.seg_abs_delta;
-	for (i = 0; i < MAX_SEGMENTS; i++)
-		seg_4lf->feature_mask[i] = (vp9_param.p.seg_lf_info[i] &
-		0x8000) ? (1 << SEG_LVL_ALT_LF) : 0;
+	    /*
+	     * Get loop filter related picture level parameters from Parser
+	     */
+		lf->mode_ref_delta_enabled = vp9_param.p.mode_ref_delta_enabled;
+		lf->sharpness_level = vp9_param.p.sharpness_level;
+		for (i = 0; i < 4; i++)
+			lf->ref_deltas[i] = vp9_param.p.ref_deltas[i];
+		for (i = 0; i < 2; i++)
+			lf->mode_deltas[i] = vp9_param.p.mode_deltas[i];
+		default_filt_lvl = vp9_param.p.filter_level;
+		seg_4lf->enabled = vp9_param.p.seg_enabled;
+		seg_4lf->abs_delta = vp9_param.p.seg_abs_delta;
 		for (i = 0; i < MAX_SEGMENTS; i++)
-			seg_4lf->feature_data[i][SEG_LVL_ALT_LF]
-			= (vp9_param.p.seg_lf_info[i]
-			& 0x100) ? -(vp9_param.p.seg_lf_info[i]
-			& 0x3f) : (vp9_param.p.seg_lf_info[i] & 0x3f);
-	/*
-	* Update loop filter Thr/Lvl table for every frame
-	*/
-	/*pr_info
-	("vp9_loop_filter (run before every frame decoding start)\n");*/
-	vp9_loop_filter_frame_init(seg_4lf, lfi, lf, default_filt_lvl);
+			seg_4lf->feature_mask[i] = (vp9_param.p.seg_lf_info[i] &
+			0x8000) ? (1 << SEG_LVL_ALT_LF) : 0;
+			for (i = 0; i < MAX_SEGMENTS; i++)
+				seg_4lf->feature_data[i][SEG_LVL_ALT_LF]
+				= (vp9_param.p.seg_lf_info[i]
+				& 0x100) ? -(vp9_param.p.seg_lf_info[i]
+				& 0x3f) : (vp9_param.p.seg_lf_info[i] & 0x3f);
+		/*
+		* Update loop filter Thr/Lvl table for every frame
+		*/
+		/*pr_info
+		("vp9_loop_filter (run before every frame decoding start)\n");*/
+		vp9_loop_filter_frame_init(seg_4lf, lfi, lf, default_filt_lvl);
 #endif
-	/*pr_info("HEVC_DEC_STATUS_REG <= VP9_10B_DECODE_SLICE\n");*/
-
-	WRITE_VREG(HEVC_DEC_STATUS_REG, VP9_10B_DECODE_SLICE);
+		/*pr_info("HEVC_DEC_STATUS_REG <= VP9_10B_DECODE_SLICE\n");*/
+	
+		WRITE_VREG(HEVC_DEC_STATUS_REG, VP9_10B_DECODE_SLICE);
 	} else {
-	pr_info("Skip search next start code\n");
-	cm->prev_fb_idx = INVALID_IDX;
-	/*skip, search next start code*/
-	WRITE_VREG(HEVC_DEC_STATUS_REG, VP9_10B_DECODE_SLICE);
+		pr_info("Skip search next start code\n");
+		printk(KERN_EMERG "[%s] ==> Skip search next start code", __func__);
+		cm->prev_fb_idx = INVALID_IDX;
+		/*skip, search next start code*/
+		WRITE_VREG(HEVC_DEC_STATUS_REG, VP9_10B_DECODE_SLICE);
 	}
 	pbi->process_busy = 0;
 	return IRQ_HANDLED;
@@ -5488,6 +5505,7 @@ static void VP9_DECODE_INIT(void)
 static void vvp9_prot_init(struct VP9Decoder_s *pbi)
 {
 	unsigned int data32;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	/* VP9_DECODE_INIT(); */
 	vp9_config_work_space_hw(pbi);
 	init_pic_list_hw(pbi);
@@ -5564,12 +5582,14 @@ static int vvp9_local_init(struct VP9Decoder_s *pbi)
 	int i;
 	int ret;
 	int width, height;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 #ifdef DEBUG_PTS
 	pbi->pts_missed = 0;
 	pbi->pts_hit = 0;
 #endif
 	pbi->saved_resolution = 0;
 	pbi->get_frame_dur = false;
+	on_no_keyframe_skiped = 0;
 	width = pbi->vvp9_amstream_dec_info.width;
 	height = pbi->vvp9_amstream_dec_info.height;
 	pbi->frame_dur =
@@ -5604,6 +5624,7 @@ TODO:FOR VERSION
 
 static s32 vvp9_init(struct VP9Decoder_s *pbi)
 {
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	init_timer(&pbi->timer);
 
 	pbi->stat |= STAT_TIMER_INIT;
@@ -5742,6 +5763,7 @@ static int amvdec_vp9_probe(struct platform_device *pdev)
 	unsigned long pre_last_frame_alloc_addr, pre_last_frame_alloc_size;
 	struct BUF_s BUF[MAX_BUF_NUM];
 	struct VP9Decoder_s *pbi = &gHevc;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	mutex_lock(&vvp9_mutex);
 	predisp_addr = pbi->predisp_addr;
 	pre_last_frame_alloc_addr = pbi->pre_last_frame_alloc_addr;
@@ -5771,13 +5793,13 @@ static int amvdec_vp9_probe(struct platform_device *pdev)
 			   pdata->mem_start, pdata->mem_end + 1);
 	}
 
-	if (pdata->sys_info)
-		pbi->vvp9_amstream_dec_info = *pdata->sys_info;
-	else {
+//	if (pdata->sys_info)
+//		pbi->vvp9_amstream_dec_info = *pdata->sys_info;
+//	else {
 		pbi->vvp9_amstream_dec_info.width = 0;
 		pbi->vvp9_amstream_dec_info.height = 0;
 		pbi->vvp9_amstream_dec_info.rate = 30;
-	}
+//	}
 
 	cma_dev = pdata->cma_dev;
 
@@ -5978,6 +6000,9 @@ MODULE_PARM_DESC(force_fps, "\n force_fps\n");
 
 module_param(max_decoding_time, uint, 0664);
 MODULE_PARM_DESC(max_decoding_time, "\n max_decoding_time\n");
+
+module_param(on_no_keyframe_skiped, uint, 0664);
+MODULE_PARM_DESC(on_no_keyframe_skiped, "\n on_no_keyframe_skiped\n");
 
 module_init(amvdec_vp9_driver_init_module);
 module_exit(amvdec_vp9_driver_remove_module);

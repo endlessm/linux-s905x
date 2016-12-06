@@ -110,8 +110,10 @@ static void set_buf_wp(u32 type, u32 wp)
 static irqreturn_t esparser_isr(int irq, void *dev_id)
 {
 	u32 int_status = READ_MPEG_REG(PARSER_INT_STATUS);
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 
 	WRITE_MPEG_REG(PARSER_INT_STATUS, int_status);
+	printk(KERN_EMERG "[%s] ==> Status: 0x%02x\n", __func__, int_status);
 
 	if (int_status & PARSER_INTSTAT_SC_FOUND) {
 		WRITE_MPEG_REG(PFIFO_RD_PTR, 0);
@@ -156,6 +158,7 @@ static ssize_t _esparser_write(const char __user *buf,
 		parser_type = PARSER_AUDIO;
 	else
 		parser_type = PARSER_SUBPIC;
+	printk(KERN_EMERG "[%s] ==> Enter (count: %zu, type: %d, parser_type: %d)\n", __func__, count, type, parser_type);
 
 	wp = buf_wp(type);
 
@@ -205,8 +208,10 @@ static ssize_t _esparser_write(const char __user *buf,
 		WRITE_MPEG_REG(PARSER_FETCH_CMD,
 			(7 << FETCH_ENDIAN) | SEARCH_PATTERN_LEN);
 
+		printk(KERN_EMERG "[%s] ==> Waiting for search_done\n", __func__);
 		ret = wait_event_interruptible_timeout(wq, search_done != 0,
 			HZ / 5);
+		printk(KERN_EMERG "[%s] ==> Search completed\n", __func__);
 		if (ret == 0) {
 			WRITE_MPEG_REG(PARSER_FETCH_CMD, 0);
 
@@ -355,6 +360,7 @@ s32 esparser_init(struct stream_buf_s *buf)
 	u32 parser_sub_end_ptr;
 	u32 parser_sub_rp;
 	bool first_use = false;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	/* #if MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON8 */
 	if (has_hevc_vdec() && (buf->type == BUF_TYPE_HEVC))
 		pts_type = PTS_TYPE_HEVC;
@@ -559,12 +565,13 @@ s32 esparser_init(struct stream_buf_s *buf)
 		int block_size = (buf->type == BUF_TYPE_AUDIO) ?
 			PAGE_SIZE << 2 : PAGE_SIZE << 4;
 		int buf_num = (buf->type == BUF_TYPE_AUDIO) ?
-			5 : 5;
-		if (!(buf->type == BUF_TYPE_SUBTITLE) &&
-			!(buf->type == BUF_TYPE_AUDIO)) /*for audio manual*/
+			5 : 10;
+		if (!(buf->type == BUF_TYPE_SUBTITLE))
 			buf->write_thread = threadrw_alloc(buf_num,
 				block_size,
-				esparser_write_ex);
+				esparser_write_ex,
+			(buf->type == BUF_TYPE_AUDIO) ? 1 : 0);
+			/*manul mode for audio*/
 	}
 	return 0;
 

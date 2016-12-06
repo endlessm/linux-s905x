@@ -247,6 +247,7 @@ static s32 am_loadmc_ex(enum vformat_e type,
 	char *pmc_addr = def;
 	int err;
 
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	if (!def && mc_addr) {
 		int loaded;
 		loaded = get_decoder_firmware_data(type,
@@ -272,6 +273,7 @@ static s32 amvdec_loadmc(const u32 *p)
 {
 	ulong timeout;
 	s32 ret = 0;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 
 #ifdef AMVDEC_USE_STATIC_MEMORY
 	if (mc_addr == NULL) {
@@ -494,6 +496,7 @@ static s32 amhevc_loadmc(const u32 *p)
 
 s32 amhevc_loadmc_ex(enum vformat_e type, const char *name, char *def)
 {
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	if (has_hevc_vdec())
 		return am_loadmc_ex(type, name, def, &amhevc_loadmc);
 	else
@@ -566,6 +569,7 @@ void amhcodec_start(void)
 
 void amhevc_start(void)
 {
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	if (has_hevc_vdec()) {
 #ifdef CONFIG_WAKELOCK
 		amvdec_wake_lock();
@@ -701,7 +705,8 @@ void amvdec2_disable(void)
 }
 
 void amhevc_enable(void)
-{
+{ 
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	if (has_hevc_vdec())
 		amhevc_pg_enable(true);
 }

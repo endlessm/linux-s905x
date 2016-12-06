@@ -73,6 +73,8 @@ unsigned int sr1_reg_val[101];
 unsigned int sr1_ret_val[101];
 struct vpp_hist_param_s vpp_hist_param;
 static unsigned int pre_hist_height, pre_hist_width;
+static unsigned int pc_mode = 0xff;
+static unsigned int pc_mode_last = 0xff;
 
 void __iomem *amvecm_hiu_reg_base;/* = *ioremap(0xc883c000, 0x2000); */
 
@@ -737,6 +739,7 @@ void vpp_get_vframe_hist_info(struct vframe_s *vf)
 
 void amvecm_video_latch(void)
 {
+	pc_mode_process();
 	cm_latch_process();
 	amvecm_size_patch();
 	ve_dnlp_latch_process();
@@ -754,7 +757,6 @@ void amvecm_on_vs(struct vframe_s *vf)
 {
 	if (probe_ok == 0)
 		return;
-	amvecm_video_latch();
 
 	if (vf != NULL) {
 		/* matrix ajust */
@@ -762,9 +764,12 @@ void amvecm_on_vs(struct vframe_s *vf)
 
 		amvecm_bricon_process(
 			vd1_brightness,
-			vd1_contrast  + vd1_contrast_offset, vf);
+			vd1_contrast + vd1_contrast_offset, vf);
 	} else
 		amvecm_matrix_process(NULL);
+
+	/* pq latch process */
+	amvecm_video_latch();
 
 	pq_enable_disable();
 }
@@ -1891,7 +1896,7 @@ static ssize_t amvecm_hdr_dbg_show(struct class *cla,
 {
 	int ret;
 
-	ret = amvecm_hdr_dbg();
+	ret = amvecm_hdr_dbg(0);
 
 	return 0;
 }
@@ -1903,11 +1908,29 @@ static ssize_t amvecm_hdr_dbg_store(struct class *cla,
 	return 0;
 }
 
+static ssize_t amvecm_hdr_reg_show(struct class *cla,
+			struct class_attribute *attr, char *buf)
+{
+	int ret;
+
+	ret = amvecm_hdr_dbg(1);
+
+	return 0;
+}
+
+static ssize_t amvecm_hdr_reg_store(struct class *cla,
+			struct class_attribute *attr,
+			const char *buf, size_t count)
+{
+	return 0;
+}
+
 static ssize_t amvecm_pc_mode_show(struct class *cla,
 			struct class_attribute *attr, char *buf)
 {
 	pr_info("pc:echo 0x0 > /sys/class/amvecm/pc_mode\n");
 	pr_info("other:echo 0x1 > /sys/class/amvecm/pc_mode\n");
+	pr_info("pc_mode:%d,pc_mode_last:%d\n", pc_mode, pc_mode_last);
 	return 0;
 }
 
@@ -1916,12 +1939,26 @@ static ssize_t amvecm_pc_mode_store(struct class *cla,
 			const char *buf, size_t count)
 {
 	size_t r;
-	int val, reg_val;
-	r = sscanf(buf, "0x%x", &val);
+	int val;
+	r = sscanf(buf, "%x", &val);
 	if ((r != 1))
 		return -EINVAL;
 
 	if (val == 1) {
+		pc_mode = 1;
+		pc_mode_last = 0xff;
+	} else if (val == 0) {
+		pc_mode = 0;
+		pc_mode_last = 0xff;
+	}
+
+	return count;
+}
+
+void pc_mode_process(void)
+{
+	unsigned int reg_val;
+	if ((pc_mode == 1) && (pc_mode != pc_mode_last)) {
 		/* open dnlp clock gate */
 		dnlp_en = 1;
 		ve_enable_dnlp();
@@ -1960,7 +1997,8 @@ static ssize_t amvecm_pc_mode_store(struct class *cla,
 				reg_val | 0x4000);
 
 		WRITE_VPP_REG(VPP_VADJ_CTRL, 0xd);
-	} else if (val == 0) {
+		pc_mode_last = pc_mode;
+	} else if ((pc_mode == 0) && (pc_mode != pc_mode_last)) {
 		dnlp_en = 0;
 		ve_disable_dnlp();
 		cm_en = 0;
@@ -1997,9 +2035,8 @@ static ssize_t amvecm_pc_mode_store(struct class *cla,
 				reg_val & 0xffffbfff);
 
 		WRITE_VPP_REG(VPP_VADJ_CTRL, 0x0);
+		pc_mode_last = pc_mode;
 	}
-
-	return count;
 }
 
 /* #if (MESON_CPU_TYPE == MESON_CPU_TYPE_MESONG9TV) */
@@ -2148,6 +2185,8 @@ static struct class_attribute amvecm_class_attrs[] = {
 		amvecm_dump_vpp_hist_show, amvecm_dump_vpp_hist_store),
 	__ATTR(hdr_dbg, S_IRUGO | S_IWUSR,
 			amvecm_hdr_dbg_show, amvecm_hdr_dbg_store),
+	__ATTR(hdr_reg, S_IRUGO | S_IWUSR,
+			amvecm_hdr_reg_show, amvecm_hdr_reg_store),
 	__ATTR(gamma_pattern, S_IRUGO | S_IWUSR,
 		set_gamma_pattern_show, set_gamma_pattern_store),
 	__ATTR(pc_mode, S_IRUGO | S_IWUSR,

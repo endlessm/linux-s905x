@@ -57,6 +57,8 @@ static const struct sd_caps host_caps[] = {
 	SD_CAPS(MMC_CAP_DRIVER_TYPE_D, "MMC_CAP_DRIVER_TYPE_D"),
 	SD_CAPS(MMC_CAP_CMD23, "MMC_CAP_CMD23"),
 	SD_CAPS(MMC_CAP_HW_RESET, "MMC_CAP_HW_RESET"),
+	SD_CAPS(MMC_CAP_RUNTIME_RESUME, "MMC_CAP_RUNTIME_RESUME"),
+	SD_CAPS(MMC_CAP_AGGRESSIVE_PM, "MMC_CAP_AGGRESSIVE_PM"),
 	SD_CAPS(MMC_PM_KEEP_POWER, "MMC_PM_KEEP_POWER"),
 };
 
@@ -234,6 +236,8 @@ int amlsd_get_platform_data(struct platform_device *pdev,
 			/*tx_phase set default value first*/
 			if (get_cpu_type() == MESON_CPU_MAJOR_ID_GXTVBB)
 				pdata->tx_phase = 1;
+			if (get_cpu_type() == MESON_CPU_MAJOR_ID_TXL)
+				pdata->tx_delay = 3;
 			SD_PARSE_U32_PROP_DEC(child, "tx_phase",
 						prop, pdata->tx_phase);
 		}

@@ -281,6 +281,7 @@ s32 stbuf_init(struct stream_buf_s *buf)
 	init_waitqueue_head(&buf->wq);
 	buf->write_thread = 0;
 	if (has_hevc_vdec() && buf->type == BUF_TYPE_HEVC) {
+		printk(KERN_EMERG "[%s] ==> Setting START_ADDR: 0x%08x, size: %d\n", __func__, addr32, buf->buf_size);
 		CLEAR_VREG_MASK(HEVC_STREAM_CONTROL, 1);
 		WRITE_VREG(HEVC_STREAM_START_ADDR, addr32);
 		WRITE_VREG(HEVC_STREAM_END_ADDR, addr32 + buf->buf_size);

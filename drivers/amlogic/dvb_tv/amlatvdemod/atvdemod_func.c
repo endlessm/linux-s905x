@@ -43,6 +43,10 @@ static bool non_std_en;
 module_param(non_std_en, bool, 0644);
 MODULE_PARM_DESC(non_std__en, "\n non_std_en\n");
 
+static int atv_video_gain;
+module_param(atv_video_gain, int, 0644);
+MODULE_PARM_DESC(atv_video_gain, "\n atv_video_gain\n");
+
 static int audio_det_mode = AUDIO_AUTO_DETECT;
 module_param(audio_det_mode, int, 0644);
 MODULE_PARM_DESC(audio_det_mode, "\n audio_det_mode\n");
@@ -143,6 +147,7 @@ static unsigned int mix1_freq;
 static unsigned int timer_init_flag;
 struct timer_list atvdemod_timer;
 static int snr_val;
+int broad_std_except_pal_m = 0;
 
 int get_atvdemod_snr_val(void)
 {
@@ -303,6 +308,11 @@ void set_audio_gain_val(int val)
 	audio_gain_val = val;
 }
 
+void set_video_gain_val(int val)
+{
+	atv_video_gain = val;
+}
+
 void atv_dmd_soft_reset(void)
 {
 	atv_dmd_wr_byte(APB_BLOCK_ADDR_SYSTEM_MGT, 0x0, 0x0);
@@ -399,7 +409,10 @@ void atv_dmd_misc(void)
 			atv_dmd_wr_long(0x06, 0x24, 0x0c010801);
 		} else {
 			atv_dmd_wr_long(0x09, 0x00, 0x1030501);
-			atv_dmd_wr_long(0x0f, 0x44, 0xfc0808c1);
+			if (atv_video_gain)
+				atv_dmd_wr_long(0x0f, 0x44, atv_video_gain);
+			else
+				atv_dmd_wr_long(0x0f, 0x44, 0xfc0808c1);
 			atv_dmd_wr_long(0x06, 0x24, 0xc030901);
 		}
 
@@ -1456,16 +1469,56 @@ int atvdemod_clk_init(void)
 {
 	/* clocks_set_hdtv (); */
 	/* 1.set system clock */
-	W_HIU_REG(HHI_ADC_PLL_CNTL3, 0xca2a2110);
-	W_HIU_REG(HHI_ADC_PLL_CNTL4, 0x2933800);
-	W_HIU_REG(HHI_ADC_PLL_CNTL, 0xe0644220);
-	W_HIU_REG(HHI_ADC_PLL_CNTL2, 0x34e0bf84);
-	W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x4a2a2110);
-	W_HIU_REG(HHI_ATV_DMD_SYS_CLK_CNTL, 0x80);
-	/* TVFE reset */
-	W_HIU_BIT(RESET1_REGISTER, 1, 7, 1);
+#if 0 /* now set pll in tvafe_general.c */
+	if (is_meson_txl_cpu()) {
+		amlatvdemod_hiu_reg_write(HHI_VDAC_CNTL0, 0x6e0201);
+		amlatvdemod_hiu_reg_write(HHI_VDAC_CNTL1, 0x8);
+		/* for TXL(T962)  */
+		pr_err("%s in TXL\n", __func__);
 
-	read_version_register();
+		/* W_HIU_REG(HHI_ADC_PLL_CNTL,  0x30c54260); */
+	#if 0
+		W_HIU_REG(HHI_ADC_PLL_CNTL,  0x30f14250);
+		W_HIU_REG(HHI_ADC_PLL_CNTL1, 0x22000442);
+		W_HIU_REG(HHI_ADC_PLL_CNTL2, 0x5ba00380);
+		W_HIU_REG(HHI_ADC_PLL_CNTL3, 0xac6a2114);
+		W_HIU_REG(HHI_ADC_PLL_CNTL4, 0x02953004);
+		W_HIU_REG(HHI_ADC_PLL_CNTL5, 0x00030a00);
+		W_HIU_REG(HHI_ADC_PLL_CNTL6, 0x00005000);
+		W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x2c6a2114);
+	#else /* get from feijun 2015/07/19 */
+		W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x4a6a2110);
+		W_HIU_REG(HHI_ADC_PLL_CNTL, 0x30f14250);
+		W_HIU_REG(HHI_ADC_PLL_CNTL1, 0x22000442);
+		/*0x5ba00380 from pll;0x5ba00384 clk
+		form crystal*/
+		W_HIU_REG(HHI_ADC_PLL_CNTL2, 0x5ba00384);
+		W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x4a6a2110);
+		W_HIU_REG(HHI_ADC_PLL_CNTL4, 0x02913004);
+		W_HIU_REG(HHI_ADC_PLL_CNTL5, 0x00034a00);
+		W_HIU_REG(HHI_ADC_PLL_CNTL6, 0x00005000);
+		W_HIU_REG(HHI_ADC_PLL_CNTL3, 0xca6a2110);
+		W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x4a6a2110);
+	#endif
+		W_HIU_REG(HHI_DADC_CNTL,  0x00102038);
+		W_HIU_REG(HHI_DADC_CNTL2, 0x00000406);
+		W_HIU_REG(HHI_DADC_CNTL3, 0x00082183);
+
+	} else {
+		W_HIU_REG(HHI_ADC_PLL_CNTL3, 0xca2a2110);
+		W_HIU_REG(HHI_ADC_PLL_CNTL4, 0x2933800);
+		W_HIU_REG(HHI_ADC_PLL_CNTL, 0xe0644220);
+		W_HIU_REG(HHI_ADC_PLL_CNTL2, 0x34e0bf84);
+		W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x4a2a2110);
+
+		W_HIU_REG(HHI_ATV_DMD_SYS_CLK_CNTL, 0x80);
+		/* TVFE reset */
+		W_HIU_BIT(RESET1_REGISTER, 1, 7, 1);
+	}
+#endif
+	W_HIU_REG(HHI_ATV_DMD_SYS_CLK_CNTL, 0x80);
+
+	/* read_version_register(); */
 
 	/*2.set atv demod top page control register*/
 	atv_dmd_input_clk_32m();
@@ -1489,29 +1542,8 @@ int atvdemod_init(void)
 			timer_init_flag = 0;
 		}
 	}
-	#if 0
-	/* clocks_set_hdtv (); */
-	/* 1.set system clock */
-	W_HIU_REG(HHI_ADC_PLL_CNTL3, 0xca2a2110);
-	W_HIU_REG(HHI_ADC_PLL_CNTL4, 0x2933800);
-	W_HIU_REG(HHI_ADC_PLL_CNTL, 0xe0644220);
-	W_HIU_REG(HHI_ADC_PLL_CNTL2, 0x34e0bf84);
-	W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x4a2a2110);
-	W_HIU_REG(HHI_ATV_DMD_SYS_CLK_CNTL, 0x80);
-	/* TVFE reset */
-	/*W_HIU_BIT(RESET1_REGISTER, 1, 7, 1);*/
 
-	read_version_register();
-
-	/*2.set atv demod top page control register*/
-	atv_dmd_input_clk_32m();
-	atv_dmd_wr_long(APB_BLOCK_ADDR_TOP, ATV_DMD_TOP_CTRL, 0x1037);
-	atv_dmd_wr_long(APB_BLOCK_ADDR_TOP, (ATV_DMD_TOP_CTRL1 << 2), 0x1f);
-
-	/*3.configure atv demod*/
-	check_communication_interface();
-	power_on_receiver();
-	#endif
+	/* 1.set system clock when atv enter*/
 
 	configure_receiver(broad_std, if_freq, if_inv, gde_curve, sound_format);
 	atv_dmd_misc();
@@ -1742,7 +1774,34 @@ int aml_audiomode_autodet(struct dvb_frontend *fe)
 				__func__, broad_std, carrier_power_average_max);
 			if (carrier_power_average_max < 150)
 				pr_err("%s,carrier too low error\n", __func__);
-
+			if (broad_std == AML_ATV_DEMOD_VIDEO_MODE_PROP_PAL_M) {
+				/*the max except palm*/
+				carrier_power_average[final_id] = 0;
+				final_id = 0;
+				carrier_power_max = carrier_power_average[0];
+				for (i = 0; i < ID_MAX; i++) {
+					if (carrier_power_max
+						< carrier_power_average[i]) {
+						carrier_power_max =
+						carrier_power_average[i];
+						final_id = i;
+					}
+				}
+			switch (final_id) {
+			case ID_PAL_I:
+				broad_std_except_pal_m =
+					AML_ATV_DEMOD_VIDEO_MODE_PROP_PAL_I;
+				break;
+			case ID_PAL_BG:
+				broad_std_except_pal_m =
+					AML_ATV_DEMOD_VIDEO_MODE_PROP_PAL_BG;
+				break;
+			case ID_PAL_DK:
+				broad_std_except_pal_m =
+					AML_ATV_DEMOD_VIDEO_MODE_PROP_PAL_DK;
+				break;
+			}
+			}
 			if (p != NULL) {
 				p->analog.std = V4L2_COLOR_STD_PAL;
 				switch (broad_std) {
@@ -1905,7 +1964,6 @@ void aml_atvdemod_overmodule_det(void)
 			if (carrier_lock_count >= 1000)
 				return;
 	/* ------------whether need timer delays between the detect lock---- */
-	/* -----------如果一直检测不到怎么办，这里会造成死循环------- */
 		}
 	/* -----------------enable auto_adjust_en------------- */
 		temp_data = atv_dmd_rd_word(APB_BLOCK_ADDR_SIF_STG_2, 0x02);
@@ -1943,8 +2001,6 @@ void aml_atvdemod_overmodule_det(void)
 			carrier_lock_count++;
 			if (carrier_lock_count >= 1000)
 				return;
-	/* ------------whether need timer delays between the detect lock---- */
-	/* -----------如果一直检测不到怎么办，这里会造成死循环--------- */
 		}
 
 		/* -----------------begain to set ov_cnt_en enable---- */

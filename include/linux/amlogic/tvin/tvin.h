@@ -82,6 +82,7 @@ enum tvin_port_e {
 	TVIN_PORT_HDMI6,
 	TVIN_PORT_HDMI7,
 	TVIN_PORT_DVIN0 = 0x00008000,
+	TVIN_PORT_VIDEO = 0x0000a000,
 	TVIN_PORT_VIU = 0x0000C000,
 	TVIN_PORT_MIPI = 0x00010000,
 	TVIN_PORT_ISP = 0x00020000,
@@ -850,4 +851,13 @@ struct tvafe_pin_mux_s {
 #endif
 #define TVIN_IOC_S_AFE_SONWON     _IO(_TM_T, 0x22)
 #define TVIN_IOC_S_AFE_SONWOFF     _IO(_TM_T, 0x23)
+
+/*
+   function defined applied for other driver
+ */
+/* adc pll ctl, atv demod & tvafe use the same adc module
+ * module index: atv demod:0x01; tvafe:0x2
+*/
+extern void adc_set_pll_cntl(bool on, unsigned int module_sel);
+
 #endif

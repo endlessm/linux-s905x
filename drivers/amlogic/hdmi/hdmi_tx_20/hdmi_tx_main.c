@@ -82,6 +82,7 @@ static int edid_rx_ext_data(unsigned char *ext, unsigned char regaddr,
 static void gpio_read_edid(unsigned char *rx_edid);
 static void hdmitx_get_edid(struct hdmitx_dev *hdev);
 static void hdmitx_set_drm_pkt(struct master_display_info_s *data);
+static int check_fbc_special(unsigned char *edid_dat);
 static int hdcp_tst_sig;
 
 #ifndef CONFIG_AM_TV_OUTPUT
@@ -1549,6 +1550,28 @@ static ssize_t store_hdcp_lstore(struct device *dev,
 	return count;
 }
 
+static unsigned int div40 = -1;
+static ssize_t show_div40(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	int pos = 0;
+
+	if (div40 != -1)
+		pos += snprintf(buf + pos, PAGE_SIZE, "%d\n", div40);
+
+	return pos;
+}
+
+static ssize_t store_div40(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct hdmitx_dev *hdev = &hdmitx_device;
+
+	hdev->HWOp.CntlDDC(hdev, DDC_SCDC_DIV40_SCRAMB, buf[0] == '1');
+	div40 = (buf[0] == '1');
+
+	return count;
+}
 
 static ssize_t show_hdcp_mode(struct device *dev,
 	struct device_attribute *attr, char *buf)
@@ -1657,11 +1680,31 @@ static ssize_t show_hdcp_ksv_info(struct device *dev,
 	return pos;
 }
 
+/* Special FBC check */
+static int check_fbc_special(unsigned char *edid_dat)
+{
+	if ((edid_dat[250] == 0xfb) && (edid_dat[251] == 0x0c))
+		return 1;
+	else
+		return 0;
+}
+
 static ssize_t show_hdcp_ver(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	int pos = 0;
-	uint32_t ver;
+	uint32_t ver = 0;
+
+	if (check_fbc_special(&hdmitx_device.EDID_buf[0])
+	    || check_fbc_special(&hdmitx_device.EDID_buf1[0])) {
+		pos += snprintf(buf+pos, PAGE_SIZE, "00\n\r");
+		return pos;
+	}
+
+	/* if TX don't have HDCP22 key, skip RX hdcp22 ver */
+	if (hdmitx_device.HWOp.CntlDDC(&hdmitx_device,
+		DDC_HDCP_22_LSTORE, 0) == 0)
+		goto next;
 
 	/* Detect RX support HDCP22 */
 	ver = hdcp_rd_hdcp22_ver();
@@ -1670,12 +1713,14 @@ static ssize_t show_hdcp_ver(struct device *dev,
 		pos += snprintf(buf+pos, PAGE_SIZE, "14\n\r");
 		return pos;
 	}
-	/* Detect RX support HDCP14 */
+next:	/* Detect RX support HDCP14 */
 	/* Here, must assume RX support HDCP14, otherwise affect 1A-03 */
 	if (ver == 0) {
+#if 0 /* No need BKSV any more */
 		ver = hdcp_rd_hdcp14_ver();
 		if (ver == 0)
 			pr_info("hdmitx: rx don't support HDCP14???\n");
+#endif
 		pos += snprintf(buf+pos, PAGE_SIZE, "14\n\r");
 		return pos;
 	}
@@ -1769,6 +1814,7 @@ static DEVICE_ATTR(hdcp_mode, S_IWUSR | S_IRUGO | S_IWGRP, show_hdcp_mode,
 	store_hdcp_mode);
 static DEVICE_ATTR(hdcp_lstore, S_IWUSR | S_IRUGO | S_IWGRP, show_hdcp_lstore,
 	store_hdcp_lstore);
+static DEVICE_ATTR(div40, S_IWUSR | S_IRUGO | S_IWGRP, show_div40, store_div40);
 static DEVICE_ATTR(hdcp_ctrl, S_IWUSR | S_IRUGO | S_IWGRP, show_hdcp_ctrl,
 	store_hdcp_ctrl);
 static DEVICE_ATTR(disp_cap_3d, S_IRUGO, show_disp_cap_3d, NULL);
@@ -2068,9 +2114,13 @@ static void hdmitx_get_edid(struct hdmitx_dev *hdev)
 
 static int get_downstream_hdcp_ver(void)
 {
+	/* if TX don't have HDCP22 key, skip RX hdcp22 ver */
+	if (hdmitx_device.HWOp.CntlDDC(&hdmitx_device,
+		DDC_HDCP_22_LSTORE, 0) == 0)
+		goto next;
 	if (hdcp_rd_hdcp22_ver())
 		return 22;
-	if (hdcp_rd_hdcp14_ver())
+next:	if (hdcp_rd_hdcp14_ver())
 		return 14;
 	return 0;
 }
@@ -2084,12 +2134,18 @@ void hdmitx_hpd_plugin_handler(struct work_struct *work)
 
 	if (!(hdev->hdmitx_event & (HDMI_TX_HPD_PLUGIN)))
 		return;
-	pr_info("hdmitx: plugin\n");
 	mutex_lock(&setclk_mutex);
+	pr_info("hdmitx: plugin\n");
+	hdev->hdmitx_event &= ~HDMI_TX_HPD_PLUGIN;
 	/* start reading E-EDID */
 	hdev->hpd_state = 1;
 	rx_repeat_hpd_state(1);
 	hdmitx_get_edid(hdev);
+	if (check_fbc_special(&hdev->EDID_buf[0])
+		|| check_fbc_special(&hdev->EDID_buf1[0]))
+		rx_set_repeater_support(0);
+	else
+		rx_set_repeater_support(1);
 	rx_repeat_hdcp_ver(get_downstream_hdcp_ver());
 	hdev->HWOp.CntlDDC(hdev, DDC_HDCP_GET_BKSV,
 		(unsigned long int)bksv_buf);
@@ -2098,7 +2154,6 @@ void hdmitx_hpd_plugin_handler(struct work_struct *work)
 	hdmitx_set_audio(hdev, &(hdev->cur_audio_param), hdmi_ch);
 	switch_set_state(&sdev, 1);
 
-	hdev->hdmitx_event &= ~HDMI_TX_HPD_PLUGIN;
 	mutex_unlock(&setclk_mutex);
 }
 
@@ -2126,6 +2181,13 @@ void hdmitx_hpd_plugout_handler(struct work_struct *work)
 	hdev->HWOp.CntlDDC(hdev, DDC_HDCP_MUX_INIT, 1);
 	hdev->HWOp.CntlDDC(hdev, DDC_HDCP_OP, HDCP14_OFF);
 	mutex_lock(&setclk_mutex);
+	pr_info("hdmitx: plugout\n");
+	if (!!(hdev->HWOp.CntlMisc(hdev, MISC_HPD_GPI_ST, 0))) {
+		pr_info("hdmitx: hpd gpi high\n");
+		hdev->hdmitx_event &= ~HDMI_TX_HPD_PLUGOUT;
+		mutex_unlock(&setclk_mutex);
+		return;
+	}
 	hdev->ready = 0;
 	hdev->hpd_state = 0;
 	rx_repeat_hpd_state(0);
@@ -2133,7 +2195,7 @@ void hdmitx_hpd_plugout_handler(struct work_struct *work)
 	hdev->HWOp.CntlDDC(hdev, DDC_HDCP_MUX_INIT, 1);
 	hdev->HWOp.CntlDDC(hdev, DDC_HDCP_OP, HDCP14_OFF);
 	hdev->HWOp.CntlMisc(hdev, MISC_TMDS_PHY_OP, TMDS_PHY_DISABLE);
-	pr_info("hdmitx: plugout\n");
+	hdev->hdmitx_event &= ~HDMI_TX_HPD_PLUGOUT;
 	hdev->HWOp.CntlMisc(hdev, MISC_ESM_RESET, 0);
 	if (hdev->gpio_i2c_enable) {
 		edid_read_flag = 0;
@@ -2144,7 +2206,6 @@ void hdmitx_hpd_plugout_handler(struct work_struct *work)
 	hdmitx_edid_clear(hdev);
 	hdmitx_edid_ram_buffer_clear(hdev);
 	switch_set_state(&sdev, 0);
-	hdev->hdmitx_event &= ~HDMI_TX_HPD_PLUGOUT;
 	mutex_unlock(&setclk_mutex);
 }
 
@@ -2595,6 +2656,7 @@ static int amhdmitx_probe(struct platform_device *pdev)
 	ret = device_create_file(dev, &dev_attr_hdcp_byp);
 	ret = device_create_file(dev, &dev_attr_hdcp_mode);
 	ret = device_create_file(dev, &dev_attr_hdcp_lstore);
+	ret = device_create_file(dev, &dev_attr_div40);
 	ret = device_create_file(dev, &dev_attr_hdcp_ctrl);
 	ret = device_create_file(dev, &dev_attr_hpd_state);
 	ret = device_create_file(dev, &dev_attr_ready);
@@ -2789,6 +2851,7 @@ static int amhdmitx_remove(struct platform_device *pdev)
 	device_remove_file(dev, &dev_attr_vic);
 	device_remove_file(dev, &dev_attr_hdcp_pwr);
 	device_remove_file(dev, &dev_attr_aud_output_chs);
+	device_remove_file(dev, &dev_attr_div40);
 
 	cdev_del(&hdmitx_device.cdev);
 

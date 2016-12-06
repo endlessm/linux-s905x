@@ -426,10 +426,13 @@ static void amstream_change_vbufsize(struct stream_port_s *port,
 	struct stream_buf_s *pvbuf)
 {
 
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	if (pvbuf->buf_start != 0) {
 		pr_info("streambuf is alloced before\n");
+		printk(KERN_EMERG "[%s] ==> pvbuf is alloced before\n", __func__);
 		return;
 	}
+	printk(KERN_EMERG "[%s] ==> pvbuf is NOT alloced before\n", __func__);
 	if (pvbuf->for_4k) {
 		pvbuf->buf_size = DEFAULT_VIDEO_BUFFER_SIZE_4K;
 		if ((pvbuf->buf_size > 30 * SZ_1M) &&
@@ -474,6 +477,7 @@ static int video_port_init(struct stream_port_s *port,
 			  struct stream_buf_s *pbuf)
 {
 	int r;
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	if ((port->flag & PORT_FLAG_VFORMAT) == 0) {
 		pr_err("vformat not set\n");
 		return -EPERM;
@@ -1078,7 +1082,6 @@ static ssize_t amstream_sub_write(struct file *file, const char *buf,
 		if (r < 0)
 			return r;
 	}
-	pr_err("amstream_sub_write\n");
 	r = esparser_write(file, pbuf, buf, count);
 	if (r < 0)
 		return r;
@@ -3214,6 +3217,7 @@ static struct platform_driver amstream_driver = {
 
 static int __init amstream_module_init(void)
 {
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	if (platform_driver_register(&amstream_driver)) {
 		pr_err("failed to register amstream module\n");
 		return -ENODEV;
