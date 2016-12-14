@@ -65,6 +65,7 @@ static dma_addr_t search_pattern_map;
 static u32 audio_real_wp;
 static u32 audio_buf_start;
 static u32 audio_buf_end;
+static struct stream_buf_s *ss_buf;
 
 static const char esparser_id[] = "esparser-id";
 
@@ -116,25 +117,6 @@ static void set_buf_wp(u32 type, u32 wp)
 	return;
 }
 
-static irqreturn_t esparser_isr(int irq, void *dev_id)
-{
-	u32 int_status = READ_MPEG_REG(PARSER_INT_STATUS);
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
-
-	WRITE_MPEG_REG(PARSER_INT_STATUS, int_status);
-	printk(KERN_EMERG "[%s] ==> Status: 0x%02x\n", __func__, int_status);
-
-	if (int_status & PARSER_INTSTAT_SC_FOUND) {
-		WRITE_MPEG_REG(PFIFO_RD_PTR, 0);
-		WRITE_MPEG_REG(PFIFO_WR_PTR, 0);
-		search_done = 1;
-		if (search_done_cb)
-			search_done_cb(search_done_cb_data);
-		wake_up_interruptible(&wq);
-	}
-	return IRQ_HANDLED;
-}
-
 static inline u32 buf_wp(u32 type)
 {
 	u32 wp =
@@ -147,6 +129,69 @@ static inline u32 buf_wp(u32 type)
 		READ_MPEG_REG(PARSER_SUB_START_PTR);
 
 	return wp;
+}
+
+static void debug_file_write_cc(char *f_prefix, const char __user *buf, size_t count)
+{
+	mm_segment_t old_fs;
+	char fname[64];
+	static int i = 0;
+	loff_t debug_file_pos = 0;
+	static struct file *debug_filp;
+
+	sprintf(fname, "/tmp/%s_%d", f_prefix, i);
+	i++;
+
+	debug_filp = filp_open(fname, O_RDWR | O_CREAT, 0);
+	if (IS_ERR(debug_filp)) {
+		pr_err("amstream: open debug file failed\n");
+		debug_filp = NULL;
+	}
+
+	if (!debug_filp)
+		return;
+
+	old_fs = get_fs();
+	set_fs(KERNEL_DS);
+
+	if (count != vfs_write(debug_filp, buf, count, &debug_file_pos))
+		pr_err("Failed to write debug file\n");
+
+	set_fs(old_fs);
+	filp_close(debug_filp, current->files);
+
+	return;
+}
+
+static irqreturn_t esparser_isr(int irq, void *dev_id)
+{
+	u32 int_status = READ_MPEG_REG(PARSER_INT_STATUS);
+	u32 wr_ptr = buf_wp(BUF_TYPE_HEVC);
+	size_t len = wr_ptr - ss_buf->latest_wr_ptr;
+
+	char *start_frame = ss_buf->buf_vaddr + (ss_buf->latest_wr_ptr - ss_buf->buf_start);
+	char *end_frame = ss_buf->buf_vaddr + (wr_ptr - ss_buf->buf_start);
+
+	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
+	printk(KERN_EMERG "[%s] ==> buf vaddr (0x%p), RD_PTR: 0x%08x, WR_PTR:0x%08x (latest: 0x%08x)\n", __func__,
+			ss_buf->buf_vaddr, stbuf_rp(ss_buf), wr_ptr, ss_buf->latest_wr_ptr);
+	printk(KERN_EMERG "[%s] ==> start_frame: 0x%p, end_frame: 0x%p, len:%zu\n", __func__, (void *) start_frame, (void *) end_frame, len);
+
+	debug_file_write_cc("in_vififo", start_frame, len);
+
+	WRITE_MPEG_REG(PARSER_INT_STATUS, int_status);
+	printk(KERN_EMERG "[%s] ==> Status: 0x%02x\n", __func__, int_status);
+
+	ss_buf->latest_wr_ptr = wr_ptr;
+	if (int_status & PARSER_INTSTAT_SC_FOUND) {
+		WRITE_MPEG_REG(PFIFO_RD_PTR, 0);
+		WRITE_MPEG_REG(PFIFO_WR_PTR, 0);
+		search_done = 1;
+		if (search_done_cb)
+			search_done_cb(search_done_cb_data);
+		wake_up_interruptible(&wq);
+	}
+	return IRQ_HANDLED;
 }
 
 void esparser_start_search(u32 parser_type, u32 phys_addr, u32 len)
@@ -380,6 +425,7 @@ s32 esparser_init(struct stream_buf_s *buf)
 	u32 parser_sub_end_ptr;
 	u32 parser_sub_rp;
 	bool first_use = false;
+	ss_buf = buf;
 	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	/* #if MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON8 */
 	if (has_hevc_vdec() && (buf->type == BUF_TYPE_HEVC))
@@ -400,6 +446,7 @@ s32 esparser_init(struct stream_buf_s *buf)
 	parser_sub_rp = READ_MPEG_REG(PARSER_SUB_RP);
 
 	buf->flag |= BUF_FLAG_PARSER;
+	buf->latest_wr_ptr = READ_VREG(HEVC_STREAM_WR_PTR);
 
 	if (atomic_add_return(1, &esparser_use_count) == 1) {
 		first_use = true;

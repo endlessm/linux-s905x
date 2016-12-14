@@ -75,6 +75,7 @@ static s32 _stbuf_alloc(struct stream_buf_s *buf)
 			flags |= CODEC_MM_FLAGS_FOR_ADECODER;
 			flags |= CODEC_MM_FLAGS_DMA_CPU;
 		}
+		flags |= CODEC_MM_FLAGS_CMA_FIRST;
 
 		buf->buf_start = codec_mm_alloc_for_dma(MEM_NAME,
 			buf->buf_page_num, 4+PAGE_SHIFT, flags);
@@ -276,6 +277,8 @@ s32 stbuf_init(struct stream_buf_s *buf)
 
 	if (!buf->buf_start) {
 		r = _stbuf_alloc(buf);
+		buf->buf_vaddr = page_address(phys_to_page(buf->buf_start));
+//		buf->buf_vaddr = phys_to_virt(buf->buf_start);
 		if (r < 0)
 			return r;
 	}
