@@ -2524,14 +2524,11 @@ static s32 vh264_init(void)
 
 	for (i = 0; i < ARRAY_SIZE(fense_buffer_spec); i++) {
 		struct buffer_spec_s *s = &fense_buffer_spec[i];
-		if (!codec_mm_enough_for_size(3 * SZ_1M))
-			return -ENOMEM;
-
 		s->alloc_count = 3 * SZ_1M / PAGE_SIZE;
 		s->phy_addr = codec_mm_alloc_for_dma(MEM_NAME,
 			s->alloc_count,
 			4 + PAGE_SHIFT,
-			CODEC_MM_FLAGS_CMA_CLEAR | CODEC_MM_FLAGS_FOR_VDECODER);
+			CODEC_MM_FLAGS_CMA_CLEAR | CODEC_MM_FLAGS_CMA);
 		s->y_canvas_index = 2 * i;
 		s->u_canvas_index = 2 * i + 1;
 		s->v_canvas_index = 2 * i + 1;
