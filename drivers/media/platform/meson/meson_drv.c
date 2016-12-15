@@ -169,7 +169,8 @@ static void send_to_parser(struct vdec_ctx *ctx, struct vb2_buffer *buf)
 		  "send src buffer %d to parser, phys addr %llx size %ld\n",
 		  buf->v4l2_buf.index, phys_addr, size);
 	printk(KERN_EMERG "[%s] ==> send src buffer %d to parser, phys addr %llx size %ld\n", __func__, buf->v4l2_buf.index, phys_addr, size);
-	esparser_start_search(PARSER_VIDEO, phys_addr, size);
+//	esparser_start_search(PARSER_VIDEO, phys_addr, size);
+	_esparser_write(phys_addr, size, BUF_TYPE_HEVC, 1);
 }
 
 static void device_run(void *priv)
@@ -701,6 +702,8 @@ static int image_thread(void *data) {
 			v4l2_err(&ctx->dev->v4l2_dev, "no frame?\n");
 			continue;
 		}
+		printk(KERN_EMERG "[%s] ==> got frame: %p\n", __func__, vf);
+		printk(KERN_EMERG "[%s] ==> vf->width: %d, vf->height: %d, vf->type: 0x%08x, vf->canvas0Addr: 0x%08x\n", __func__, vf->width, vf->height, vf->type, vf->canvas0Addr);
 
 		dst = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
 		if (!dst) {
@@ -708,13 +711,14 @@ static int image_thread(void *data) {
 			vf_put(vf, RECEIVER_NAME);
 			continue;
 		}
+
+		vdec_process_image(ctx->dev, vf, dst);
 //		{
 //			uint8_t *dp = (uint8_t *) vb2_plane_vaddr(dst, 0);
 //			unsigned long size = vb2_get_plane_payload(dst, 0);
 //			debug_file_write("to_GE2D", dp, size);
 //		}
 
-		vdec_process_image(ctx->dev, vf, dst);
 		vf_put(vf, RECEIVER_NAME);
 		v4l2_m2m_buf_done(dst, VB2_BUF_STATE_DONE);
 	}

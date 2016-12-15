@@ -38,6 +38,9 @@ static void src_config(struct vframe_s *vf, config_para_ex_t *ge2d_config)
 	ge2d_config->src_planes[2].addr = src_cs2.addr;
 	ge2d_config->src_planes[2].w = src_cs2.width;
 	ge2d_config->src_planes[2].h = src_cs2.height;
+	printk(KERN_EMERG "[%s] ==> 0.addr: %p, 0.w: %d, 0.h %d\n", __func__, (void *) src_cs0.addr, src_cs0.width, src_cs0.height);
+	printk(KERN_EMERG "[%s] ==> 1.addr: %p, 1.w: %d, 1.h %d\n", __func__, (void *) src_cs1.addr, src_cs1.width, src_cs1.height);
+	printk(KERN_EMERG "[%s] ==> 2.addr: %p, 2.w: %d, 2.h %d\n", __func__, (void *) src_cs2.addr, src_cs2.width, src_cs2.height);
 
 	ge2d_config->src_key.key_enable = 0;
 	ge2d_config->src_key.key_mask = 0;

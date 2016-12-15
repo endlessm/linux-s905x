@@ -177,7 +177,7 @@ static irqreturn_t esparser_isr(int irq, void *dev_id)
 			ss_buf->buf_vaddr, stbuf_rp(ss_buf), wr_ptr, ss_buf->latest_wr_ptr);
 	printk(KERN_EMERG "[%s] ==> start_frame: 0x%p, end_frame: 0x%p, len:%zu\n", __func__, (void *) start_frame, (void *) end_frame, len);
 
-	debug_file_write_cc("in_vififo", start_frame, len);
+//	debug_file_write_cc("in_vififo", start_frame, len);
 
 	WRITE_MPEG_REG(PARSER_INT_STATUS, int_status);
 	printk(KERN_EMERG "[%s] ==> Status: 0x%02x\n", __func__, int_status);
@@ -187,8 +187,6 @@ static irqreturn_t esparser_isr(int irq, void *dev_id)
 		WRITE_MPEG_REG(PFIFO_RD_PTR, 0);
 		WRITE_MPEG_REG(PFIFO_WR_PTR, 0);
 		search_done = 1;
-		if (search_done_cb)
-			search_done_cb(search_done_cb_data);
 		wake_up_interruptible(&wq);
 	}
 	return IRQ_HANDLED;
@@ -221,7 +219,7 @@ void esparser_start_search(u32 parser_type, u32 phys_addr, u32 len)
 
 }
 
-static ssize_t _esparser_write(const char __user *buf,
+ ssize_t _esparser_write(const char __user *buf,
 		size_t count, u32 type, int isphybuf)
 {
 	size_t r = count;
@@ -291,6 +289,10 @@ static ssize_t _esparser_write(const char __user *buf,
 		} else if (ret < 0)
 			return -ERESTARTSYS;
 	}
+
+	if (search_done_cb)
+		search_done_cb(search_done_cb_data);
+
 
 	if ((type == BUF_TYPE_VIDEO)
 		|| (has_hevc_vdec() && (type == BUF_TYPE_HEVC)))

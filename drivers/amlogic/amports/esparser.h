@@ -36,6 +36,8 @@ extern ssize_t esparser_write_ex(struct file *file,
 			struct stream_buf_s *stbuf,
 			const char __user *buf, size_t count,
 			int is_phy);
+extern ssize_t _esparser_write(const char __user *buf,
+		size_t count, u32 type, int isphybuf);
 
 extern s32 es_vpts_checkin_us64(struct stream_buf_s *buf, u64 us64);
 

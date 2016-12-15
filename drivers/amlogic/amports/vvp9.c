@@ -1651,12 +1651,12 @@ VP9 buffer management end
 #define HEVC_CM_HEADER_LENGTH                      0x3629
 #define HEVC_CM_HEADER_OFFSET                      0x362b
 
-#define LOSLESS_COMPRESS_MODE
+//#define LOSLESS_COMPRESS_MODE
 /* DOUBLE_WRITE_MODE is enabled only when NV21 8 bit output is needed */
 /* double_write_mode: 0, no double write; 1, 1:1 ratio; 2, (1/4):(1/4) ratio
 	0x10, double write only
 */
-static u32 double_write_mode;
+static u32 double_write_mode = 0x1;
 
 /*#define DECOMP_HEADR_SURGENT*/
 
@@ -3872,7 +3872,7 @@ static void config_sao_hw(struct VP9Decoder_s *pbi, union param_u *params)
 	/*set them all 0 for H265_NV21 (no down-scale)*/
 	data32 &= ~(0xff << 16);
 	WRITE_VREG(HEVC_SAO_CTRL5, data32);
-	ata32 = READ_VREG(HEVCD_IPP_AXIIF_CONFIG);
+	data32 = READ_VREG(HEVCD_IPP_AXIIF_CONFIG);
 	data32 &= (~0x30);
 	/*[5:4] address_format 00:linear 01:32x32 10:64x32*/
 	data32 |= (MEM_MAP_MODE << 4);
@@ -5051,6 +5051,8 @@ static int prepare_display_buf(struct VP9Decoder_s *pbi,
 		if ((debug & VP9_DEBUG_VF_REF) == 0)
 			inc_vf_ref(pbi, pic_config->index);
 		kfifo_put(&pbi->display_q, (const struct vframe_s *)vf);
+		printk(KERN_EMERG "[%s] ==> Sending frame: %p\n", __func__, vf);
+		printk(KERN_EMERG "[%s] ==> vf->width: %d, vf->height: %d, vf->type: 0x%08x, vf->canvas0Addr: 0x%08x\n", __func__, vf->width, vf->height, vf->type, vf->canvas0Addr);
 		printk(KERN_EMERG "[%s] ==> Sending VFRAME_EVENT_PROVIDER_VFRAME_READY\n", __func__);
 		vf_notify_receiver(PROVIDER_NAME,
 				VFRAME_EVENT_PROVIDER_VFRAME_READY, NULL);
