@@ -53,12 +53,13 @@
 
 
 /* register */
+#define VIU_MISC_CTRL1 0x1a07
 #define VPU_VIU_VENC_MUX_CTRL 0x271a
 #define ENCI_INFO_READ 0x271c
 #define ENCP_INFO_READ 0x271d
 #define ENCT_INFO_READ 0x271e
 #define ENCL_INFO_READ 0x271f
-
+#define VPU_VIU2VDIN_HDN_CTRL 0x2780
 #if 0 /* def CONFIG_GAMMA_AUTO_TUNE */
 
 static bool gamma_tune_en;
@@ -581,7 +582,7 @@ static struct class_attribute gamma_proc_class_attrs[] = {
 #endif
 static int viuin_support(struct tvin_frontend_s *fe, enum tvin_port_e port)
 {
-	if (port == TVIN_PORT_VIU)
+	if (port == TVIN_PORT_VIU || port == TVIN_PORT_VIDEO)
 		return 0;
 	else
 		return -1;
@@ -633,6 +634,19 @@ static int viuin_open(struct tvin_frontend_s *fe, enum tvin_port_e port)
 		break;
 	}
 	viuin_check_venc_line(devp);
+	if (port == TVIN_PORT_VIDEO) {
+		/* enable hsync for vdin loop */
+		wr_bits_viu(VIU_MISC_CTRL1, 1, 28, 1);
+		viu_mux = 0x4;
+	} else {
+		if (is_meson_gxbb_cpu() || is_meson_gxm_cpu() ||
+				is_meson_gxl_cpu()) {
+			if (devp->parm.v_active == 2160 &&
+				devp->parm.frame_rate > 30)
+				/* 1/2 down scaling */
+				wr_viu(VPU_VIU2VDIN_HDN_CTRL, 0x40f00);
+			}
+	}
 	wr_bits_viu(VPU_VIU_VENC_MUX_CTRL, viu_mux, 4, 4);
 	wr_bits_viu(VPU_VIU_VENC_MUX_CTRL, viu_mux, 8, 4);
 	devp->flag = 0;
@@ -652,6 +666,8 @@ static void viuin_close(struct tvin_frontend_s *fe)
 		wr_bits_viu(VPU_VIU_VENC_MUX_CTRL, 0, 8, 4);
 		wr_bits_viu(VPU_VIU_VENC_MUX_CTRL, 0, 4, 4);
 	}
+	if (rd_viu(VPU_VIU2VDIN_HDN_CTRL) != 0)
+		wr_viu(VPU_VIU2VDIN_HDN_CTRL, 0x0);
 }
 
 static void viuin_start(struct tvin_frontend_s *fe, enum tvin_sig_fmt_e fmt)
@@ -731,9 +747,12 @@ static void viuin_sig_propery(struct tvin_frontend_s *fe,
 {
 	static const struct vinfo_s *vinfo;
 	struct viuin_s *devp = container_of(fe, struct viuin_s, frontend);
-
-	vinfo = get_current_vinfo();
-	prop->color_format = vinfo->viu_color_fmt;
+	if (devp->parm.port == TVIN_PORT_VIDEO)
+		prop->color_format = TVIN_YUV444;
+	else {
+		vinfo = get_current_vinfo();
+		prop->color_format = vinfo->viu_color_fmt;
+	}
 	prop->dest_cfmt = devp->parm.dfmt;
 
 	prop->scaling4w = devp->parm.dest_hactive;

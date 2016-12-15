@@ -18,6 +18,15 @@
 
 /* edid config reg value */
 #define TVAFE_EDID_CONFIG           0x03804050/* 0x03800050 */
+
+/* adc pll ctl, atv demod & tvafe use the same adc module
+ * module index: atv demod:0x01; tvafe:0x2
+*/
+#define ADC_EN_ATV_DEMOD	0x1
+#define ADC_EN_TVAFE		0x2
+
+static unsigned int adc_pll_chg;
+
 #if 0
 /* calibration defines */
 #define TVAFE_ADC_CAL_STEP_GAIN     1
@@ -911,7 +920,7 @@ static enum tvafe_adc_ch_e tvafe_adc_pin_muxing(
 					enum tvafe_adc_pin_e pin)
 {
 	enum tvafe_adc_ch_e ret = TVAFE_ADC_CH_NULL;
-	if (is_meson_gxtvbb_cpu()) {
+	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXTVBB) {
 		pr_info("[tvafe]%s:pin:%d\n", __func__, (unsigned int)pin);
 		if (pin == TVAFE_CVBS_IN0) {
 
@@ -1131,8 +1140,7 @@ int tvafe_set_source_muxing(enum tvin_port_e port,
 	switch (port) {
 
 	case TVIN_PORT_CVBS0:
-		if (is_meson_gxtvbb_cpu())
-			tvafe_adc_pin_muxing(pinmux->pin[CVBS_IN0]);
+		tvafe_adc_pin_muxing(pinmux->pin[CVBS_IN0]);
 #if 0
 		else {
 			if (
@@ -1157,8 +1165,7 @@ int tvafe_set_source_muxing(enum tvin_port_e port,
 #endif
 		break;
 	case TVIN_PORT_CVBS1:
-		if (is_meson_gxtvbb_cpu())
-				tvafe_adc_pin_muxing(pinmux->pin[CVBS_IN1]);
+		tvafe_adc_pin_muxing(pinmux->pin[CVBS_IN1]);
 #if 0
 		else {
 			if (tvafe_adc_pin_muxing(pinmux->pin[CVBS1_Y]) ==
@@ -1180,8 +1187,7 @@ int tvafe_set_source_muxing(enum tvin_port_e port,
 #endif
 		break;
 	case TVIN_PORT_CVBS2:
-		if (is_meson_gxtvbb_cpu())
-			tvafe_adc_pin_muxing(pinmux->pin[CVBS_IN2]);
+		tvafe_adc_pin_muxing(pinmux->pin[CVBS_IN2]);
 #if 0
 		else {
 			if (tvafe_adc_pin_muxing(pinmux->pin[CVBS2_Y]) ==
@@ -1203,8 +1209,7 @@ int tvafe_set_source_muxing(enum tvin_port_e port,
 #endif
 		break;
 	case TVIN_PORT_CVBS3:
-		if (is_meson_gxtvbb_cpu())
-			tvafe_adc_pin_muxing(pinmux->pin[CVBS_IN3]);
+		tvafe_adc_pin_muxing(pinmux->pin[CVBS_IN3]);
 #if 0
 		else {
 			if (tvafe_adc_pin_muxing(pinmux->pin[CVBS3_Y]) ==
@@ -3990,15 +3995,27 @@ static void tvafe_set_cvbs_default(struct tvafe_cvd2_s *cvd2,
 #endif
 	/*config adc*/
 	if (port == TVIN_PORT_CVBS3) {
-		/** DADC CNTL for LIF signal input **/
-		W_HIU_REG(HHI_DADC_CNTL, 0x1411036);
-		W_HIU_REG(HHI_DADC_CNTL2, 0x0);
-		W_HIU_REG(HHI_DADC_CNTL3, 0x430036);
-		W_HIU_REG(HHI_DADC_CNTL4, 0x80600240);
+		if (is_meson_txl_cpu()) {
+			/** DADC CNTL for LIF signal input **/
+			W_HIU_REG(HHI_DADC_CNTL, 0x00102038);
+			W_HIU_REG(HHI_DADC_CNTL2, 0x00000406);
+			W_HIU_REG(HHI_DADC_CNTL3, 0x00082183);
+		} else {
+			/** DADC CNTL for LIF signal input **/
+			W_HIU_REG(HHI_DADC_CNTL, 0x1411036);
+			W_HIU_REG(HHI_DADC_CNTL2, 0x0);
+			W_HIU_REG(HHI_DADC_CNTL3, 0x430036);
+			W_HIU_REG(HHI_DADC_CNTL4, 0x80600240);
+		}
 	} else{
-		/** CADC CNTL for LIF signal input **/
-		W_HIU_REG(HHI_CADC_CNTL, 0x8022436);
-		W_HIU_REG(HHI_CADC_CNTL2, 0x848000);
+		if (is_meson_txl_cpu()) {
+			W_HIU_REG(HHI_CADC_CNTL, 0x02000A08);
+			W_HIU_REG(HHI_CADC_CNTL2, 0x04007B05);
+		} else if (is_meson_gxtvbb_cpu()) {
+			/** CADC CNTL for LIF signal input **/
+			W_HIU_REG(HHI_CADC_CNTL, 0x8022436);
+			W_HIU_REG(HHI_CADC_CNTL2, 0x848000);
+		}
 	}
 	/** enable tv_decoder mem clk **/
 	W_HIU_BIT(HHI_VPU_CLK_CNTL, 1 , 28, 1);
@@ -4010,7 +4027,7 @@ static void tvafe_set_cvbs_default(struct tvafe_cvd2_s *cvd2,
 			cvbs_top_reg_default[i][1]);
 		i++;
 	}
-	if (is_meson_gxtvbb_cpu()) {
+	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXTVBB) {
 		W_APB_REG(TVFE_VAFE_CTRL0, 0x00090b00);
 		W_APB_REG(TVFE_VAFE_CTRL1, 0x00000110);
 		W_APB_REG(TVFE_VAFE_CTRL2, 0x0010ef93);
@@ -4046,10 +4063,7 @@ static void tvafe_set_cvbs_default(struct tvafe_cvd2_s *cvd2,
 
 void tvafe_enable_avout(enum tvin_port_e port, bool enable)
 {
-	int chip_ver = 0;
-
-	if (is_meson_gxtvbb_cpu()) {
-		chip_ver = get_meson_cpu_version(MESON_CPU_VERSION_LVL_MINOR);
+	if (get_cpu_type() >= MESON_CPU_MAJOR_ID_GXTVBB) {
 		if (enable) {
 			if (port == TVIN_PORT_CVBS3) {
 				vdac_enable(1, 0x1);
@@ -4082,6 +4096,86 @@ void tvafe_enable_avout(enum tvin_port_e port, bool enable)
 #endif
 	}
 }
+
+void adc_set_pll_cntl(bool on, unsigned int module_sel)
+{
+	mutex_lock(&pll_mutex);
+	if (!on) {
+		adc_pll_chg &= ~module_sel;
+		/* pr_info("\n%s: init flag on:%d,module:0x%x,flag:0x%x...\n",
+			__func__, on, module_sel, adc_pll_chg); */
+		mutex_unlock(&pll_mutex);
+		return;
+	}
+
+	switch (module_sel) {
+	case ADC_EN_ATV_DEMOD: /* atv demod */
+		if (adc_pll_chg & ADC_EN_TVAFE)
+			break;
+		if (is_meson_txl_cpu()) {
+			W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x4a6a2110);
+			W_HIU_REG(HHI_ADC_PLL_CNTL, 0x30f14250);
+			W_HIU_REG(HHI_ADC_PLL_CNTL1, 0x22000442);
+			/*0x5ba00380 from pll;0x5ba00384 clk
+			form crystal*/
+			W_HIU_REG(HHI_ADC_PLL_CNTL2, 0x5ba00384);
+			W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x4a6a2110);
+			W_HIU_REG(HHI_ADC_PLL_CNTL4, 0x02913004);
+			W_HIU_REG(HHI_ADC_PLL_CNTL5, 0x00034a00);
+			W_HIU_REG(HHI_ADC_PLL_CNTL6, 0x00005000);
+			W_HIU_REG(HHI_ADC_PLL_CNTL3, 0xca6a2110);
+			W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x4a6a2110);
+		} else {
+			W_HIU_REG(HHI_ADC_PLL_CNTL3, 0xca2a2110);
+			W_HIU_REG(HHI_ADC_PLL_CNTL4, 0x2933800);
+			W_HIU_REG(HHI_ADC_PLL_CNTL, 0xe0644220);
+			W_HIU_REG(HHI_ADC_PLL_CNTL2, 0x34e0bf84);
+			W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x4a2a2110);
+			/* TVFE reset */
+			W_HIU_BIT(RESET1_REGISTER, 1, 7, 1);
+		}
+		adc_pll_chg |= ADC_EN_ATV_DEMOD;
+		/* pr_info("\n%s: on:%d,module:0x%x,flag:0x%x...\n", __func__,
+			on, module_sel, adc_pll_chg); */
+		break;
+	case ADC_EN_TVAFE: /* tvafe */
+		if (adc_pll_chg & ADC_EN_ATV_DEMOD)
+			break;
+		if (is_meson_txl_cpu()) {
+			W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x4a6a2110);
+			W_HIU_REG(HHI_ADC_PLL_CNTL, 0x30f14250);
+			W_HIU_REG(HHI_ADC_PLL_CNTL1, 0x22000442);
+			/*0x5ba00380 from pll;0x5ba00384 clk
+			form crystal*/
+			W_HIU_REG(HHI_ADC_PLL_CNTL2, 0x5ba00384);
+			W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x4a6a2110);
+			W_HIU_REG(HHI_ADC_PLL_CNTL4, 0x02913004);
+			W_HIU_REG(HHI_ADC_PLL_CNTL5, 0x00034a00);
+			W_HIU_REG(HHI_ADC_PLL_CNTL6, 0x00005000);
+			W_HIU_REG(HHI_ADC_PLL_CNTL3, 0xca6a2110);
+			W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x4a6a2110);
+		} else {
+			W_HIU_REG(HHI_ADC_PLL_CNTL3, 0xca2a2110);
+			W_HIU_REG(HHI_ADC_PLL_CNTL4, 0x2933800);
+			W_HIU_REG(HHI_ADC_PLL_CNTL, 0xe0644220);
+			W_HIU_REG(HHI_ADC_PLL_CNTL2, 0x34e0bf84);
+			W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x4a2a2110);
+			/* TVFE reset */
+			W_HIU_BIT(RESET1_REGISTER, 1, 7, 1);
+		}
+		adc_pll_chg |= ADC_EN_TVAFE;
+		/* pr_info("\n%s: on:%d,module:0x%x,flag:0x%x...\n", __func__,
+			on, module_sel, adc_pll_chg); */
+		break;
+	default:
+		pr_err("%s:module: 0x%x wrong module index !! ",
+			__func__, module_sel);
+		break;
+	}
+	mutex_unlock(&pll_mutex);
+}
+EXPORT_SYMBOL(adc_set_pll_cntl);
+
 /*
  * tvafe init the whole module
  */
@@ -4136,8 +4230,7 @@ void tvafe_init_reg(struct tvafe_cvd2_s *cvd2,
 #endif
 		if ((port >= TVIN_PORT_CVBS0) && (port <= TVIN_PORT_CVBS7)) {
 #if (defined(CONFIG_ADC_DOUBLE_SAMPLING_FOR_CVBS) && defined(CRYSTAL_24M))
-			if (is_meson_gxtvbb_cpu()
-				&& (port != TVIN_PORT_CVBS3)
+			if ((port != TVIN_PORT_CVBS3)
 				&& (port != TVIN_PORT_CVBS0)) {
 				W_HIU_REG(HHI_ADC_PLL_CNTL3, 0xa92a2110);
 				W_HIU_REG(HHI_ADC_PLL_CNTL4, 0x02973800);
@@ -4146,13 +4239,7 @@ void tvafe_init_reg(struct tvafe_cvd2_s *cvd2,
 				W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x292a2110);
 			} else
 #endif
-			{
-				W_HIU_REG(HHI_ADC_PLL_CNTL3, 0xce7a2110);
-				W_HIU_REG(HHI_ADC_PLL_CNTL4, 0x2933800);
-				W_HIU_REG(HHI_ADC_PLL_CNTL, 0x0484680);
-				W_HIU_REG(HHI_ADC_PLL_CNTL2, 0x34e0bf84);
-				W_HIU_REG(HHI_ADC_PLL_CNTL3, 0x4e7a2110);
-			}
+			adc_set_pll_cntl(1, 0x2);
 		}
 		tvafe_set_cvbs_default(cvd2, mem, port, pinmux);
 		/*turn on/off av out*/
@@ -4237,6 +4324,8 @@ void tvafe_enable_module(bool enable)
 		W_HIU_REG(HHI_VAFE_CLKIN_CNTL, 0);
 		W_HIU_REG(HHI_VAFE_CLKPI_CNTL, 0);
 		W_HIU_REG(HHI_TVFE_AUTOMODE_CLK_CNTL, 0);
+		/* init adc pll flag */
+		adc_set_pll_cntl(0, 0x2);
 	}
 	/* adc bandgap, the adc ref signal for demod */
 	/*if (enable)

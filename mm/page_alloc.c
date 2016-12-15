@@ -163,7 +163,7 @@ bool pm_suspended_storage(void)
 int pageblock_order __read_mostly;
 #endif
 
-static void __free_pages_ok(struct page *page, unsigned int order);
+static int __free_pages_ok(struct page *page, unsigned int order);
 
 /*
  * results with 256, 32 in the lowmem_reserve sysctl:
@@ -220,6 +220,7 @@ int min_free_order_shift = 1;
  * down to the min watermarks controlled by min_free_kbytes above.
  */
 int extra_free_kbytes = 0;
+
 
 static unsigned long __meminitdata nr_kernel_pages;
 static unsigned long __meminitdata nr_all_pages;
@@ -572,7 +573,7 @@ static inline int page_is_buddy(struct page *page, struct page *buddy,
  * -- nyc
  */
 
-static inline void __free_one_page(struct page *page,
+static inline int __free_one_page(struct page *page,
 		struct zone *zone, unsigned int order,
 		int migratetype)
 {
@@ -585,7 +586,7 @@ static inline void __free_one_page(struct page *page,
 
 	if (unlikely(PageCompound(page)))
 		if (unlikely(destroy_compound_page(page, order)))
-			return;
+			return -1;
 
 	VM_BUG_ON(migratetype == -1);
 
@@ -648,6 +649,7 @@ out:
 	zone->free_area[order].nr_free++;
 	if (is_migrate_cma(migratetype))
 		zone->free_area[order].nr_free_cma++;
+	return order;
 }
 
 static inline int free_pages_check(struct page *page)
@@ -740,18 +742,20 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 	spin_unlock(&zone->lock);
 }
 
-static void free_one_page(struct zone *zone, struct page *page, int order,
+static int free_one_page(struct zone *zone, struct page *page, int order,
 				int migratetype)
 {
 	int cur_migratetype;
+	int free_order;
 	spin_lock(&zone->lock);
 	zone->pages_scanned = 0;
 
 	cur_migratetype = get_pageblock_migratetype(page);
-	__free_one_page(page, zone, order, cur_migratetype);
+	free_order = __free_one_page(page, zone, order, cur_migratetype);
 	if (unlikely(!is_migrate_isolate(cur_migratetype)))
 		__mod_zone_freepage_state(zone, 1 << order, cur_migratetype);
 	spin_unlock(&zone->lock);
+	return free_order;
 }
 
 static bool free_pages_prepare(struct page *page, unsigned int order)
@@ -781,20 +785,22 @@ static bool free_pages_prepare(struct page *page, unsigned int order)
 	return true;
 }
 
-static void __free_pages_ok(struct page *page, unsigned int order)
+static int __free_pages_ok(struct page *page, unsigned int order)
 {
 	unsigned long flags;
 	int migratetype;
+	int free_order;
 
 	if (!free_pages_prepare(page, order))
-		return;
+		return -1;
 
 	local_irq_save(flags);
 	__count_vm_events(PGFREE, 1 << order);
 	migratetype = get_pageblock_migratetype(page);
 	set_freepage_migratetype(page, migratetype);
-	free_one_page(page_zone(page), page, order, migratetype);
+	free_order = free_one_page(page_zone(page), page, order, migratetype);
 	local_irq_restore(flags);
+	return free_order;
 }
 
 void __init __free_pages_bootmem(struct page *page, unsigned int order)
@@ -951,18 +957,43 @@ static int prep_new_page(struct page *page, int order, gfp_t gfp_flags)
 	return 0;
 }
 
+#ifdef CONFIG_CMA
+static inline bool cma_page(struct page *page)
+{
+	int migrate_type = 0;
+
+	migrate_type = get_pageblock_migratetype(page);
+	if (is_migrate_cma(migrate_type) ||
+	   is_migrate_isolate(migrate_type)) {
+		return true;
+	}
+	return false;
+}
+#endif
+
+static inline bool is_writeback(gfp_t flags)
+{
+	return flags & __GFP_WRITE;
+}
+
 /*
  * Go through the free lists for the given migratetype and remove
  * the smallest available page from the freelists
  */
 static inline
 struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
-						int migratetype)
+						int migratetype, gfp_t flags)
 {
 	unsigned int current_order;
 	struct free_area *area;
 	struct page *page;
 
+#ifdef CONFIG_CMA
+	/* write back pages should not use CMA */
+	if (migratetype == MIGRATE_CMA &&
+		(is_writeback(flags) || cma_alloc_ref()))
+		return NULL;
+#endif
 	/* Find a page of the appropriate size in the preferred list */
 	for (current_order = order; current_order < MAX_ORDER; ++current_order) {
 		area = &(zone->free_area[current_order]);
@@ -1149,7 +1180,8 @@ static int try_to_steal_freepages(struct zone *zone, struct page *page,
 
 /* Remove an element from the buddy allocator from the fallback list */
 static inline struct page *
-__rmqueue_fallback(struct zone *zone, int order, int start_migratetype)
+__rmqueue_fallback(struct zone *zone, int order,
+		   int start_migratetype, gfp_t gfp_flag)
 {
 	struct free_area *area;
 	int current_order;
@@ -1170,8 +1202,13 @@ __rmqueue_fallback(struct zone *zone, int order, int start_migratetype)
 			if (migratetype == MIGRATE_RESERVE)
 				break;
 #ifdef CONFIG_CMA
-			if (flags && migratetype == MIGRATE_CMA)
-				continue;
+			/* write back pages should not use CMA */
+			if (migratetype == MIGRATE_CMA) {
+				if (flags                  ||
+				    is_writeback(gfp_flag) ||
+				    cma_alloc_ref())
+					continue;
+			}
 #endif
 			area = &(zone->free_area[current_order]);
 			if (list_empty(&area->free_list[migratetype]))
@@ -1215,7 +1252,7 @@ __rmqueue_fallback(struct zone *zone, int order, int start_migratetype)
  * Call me with the zone->lock already held.
  */
 static struct page *__rmqueue(struct zone *zone, unsigned int order,
-						int migratetype)
+						int migratetype, gfp_t gfp_flag)
 {
 	struct page *page;
 	int ori_migratetype = migratetype;
@@ -1240,7 +1277,8 @@ static struct page *__rmqueue(struct zone *zone, unsigned int order,
 				break;
 		}
 		if (tmp_migratetype == MIGRATE_CMA) {
-			page = __rmqueue_smallest(zone, order, MIGRATE_CMA);
+			page = __rmqueue_smallest(zone, order,
+						  MIGRATE_CMA, gfp_flag);
 			if (page) {
 				ori_migratetype = MIGRATE_CMA;
 				goto alloc_page_success;
@@ -1249,10 +1287,10 @@ static struct page *__rmqueue(struct zone *zone, unsigned int order,
 	}
 #endif
 retry_reserve:
-	page = __rmqueue_smallest(zone, order, ori_migratetype);
+	page = __rmqueue_smallest(zone, order, ori_migratetype, gfp_flag);
 
 	if (unlikely(!page) && ori_migratetype != MIGRATE_RESERVE) {
-		page = __rmqueue_fallback(zone, order, migratetype);
+		page = __rmqueue_fallback(zone, order, migratetype, gfp_flag);
 
 		/*
 		 * Use MIGRATE_RESERVE rather than fail an allocation. goto
@@ -1278,13 +1316,13 @@ alloc_page_success:
  */
 static int rmqueue_bulk(struct zone *zone, unsigned int order,
 			unsigned long count, struct list_head *list,
-			int migratetype, int cold)
+			int migratetype, int cold, gfp_t flags)
 {
 	int i;
 
 	spin_lock(&zone->lock);
 	for (i = 0; i < count; ++i) {
-		struct page *page = __rmqueue(zone, order, migratetype);
+		struct page *page = __rmqueue(zone, order, migratetype, flags);
 		if (unlikely(page == NULL))
 			break;
 
@@ -1649,7 +1687,7 @@ again:
 #endif
 			pcp->count += rmqueue_bulk(zone, 0,
 					pcp->batch, list,
-					migratetype, cold);
+					migratetype, cold, gfp_flags);
 #ifdef CONFIG_CMA
 			if (gfp_flags & __GFP_BDEV)
 				migratetype &= (~__GFP_BDEV);
@@ -1663,11 +1701,15 @@ again:
 		else
 			page = list_entry(list->next, struct page, lru);
 #ifdef CONFIG_CMA
-		if (gfp_flags & __GFP_BDEV) {
+		/* pcp pages with cma should not used for writeback */
+		if (gfp_flags & __GFP_BDEV  ||
+		    is_writeback(gfp_flags) ||
+		    cma_alloc_ref()) {
 			if (get_freepage_migratetype(page) == MIGRATE_CMA) {
 				spin_lock(&zone->lock);
 				migratetype |= __GFP_BDEV;
-				page = __rmqueue(zone, order, migratetype);
+				page = __rmqueue(zone, order,
+						 migratetype, gfp_flags);
 				migratetype &= (~__GFP_BDEV);
 				spin_unlock(&zone->lock);
 				if (!page)
@@ -1679,7 +1721,8 @@ again:
 		} else if (migratetype == MIGRATE_MOVABLE) {
 			if (get_freepage_migratetype(page) != MIGRATE_CMA) {
 				spin_lock(&zone->lock);
-				tmp_page = __rmqueue(zone, order, MIGRATE_CMA);
+				tmp_page = __rmqueue(zone, order,
+						     MIGRATE_CMA, gfp_flags);
 				spin_unlock(&zone->lock);
 				if (!tmp_page)
 					goto use_pcp_page;
@@ -1708,7 +1751,7 @@ use_pcp_page:
 			WARN_ON_ONCE(order > 1);
 		}
 		spin_lock_irqsave(&zone->lock, flags);
-		page = __rmqueue(zone, order, migratetype);
+		page = __rmqueue(zone, order, migratetype, gfp_flags);
 		spin_unlock(&zone->lock);
 		if (!page)
 			goto failed;
@@ -2944,6 +2987,12 @@ out:
 		goto retry_cpuset;
 
 	memcg_kmem_commit_charge(page, memcg, order);
+#ifdef CONFIG_CMA
+	if (page != NULL && is_writeback(gfp_mask) && cma_page(page)) {
+		WARN(1, "write back in cma, order:%d, mask:%x, migrate:%d\n",
+		     order, gfp_mask, get_pageblock_migratetype(page));
+	}
+#endif
 	return page;
 }
 EXPORT_SYMBOL(__alloc_pages_nodemask);
@@ -2985,6 +3034,24 @@ void __free_pages(struct page *page, unsigned int order)
 }
 
 EXPORT_SYMBOL(__free_pages);
+
+int __free_pages_cma(struct page *page, unsigned int order, unsigned int *cnt)
+{
+	int i;
+	int ref = 0;
+
+	/* clear ref count first */
+	for (i = 0; i < (1 << order); i++) {
+		if (!put_page_testzero(page + i))
+			ref++;
+	}
+	if (ref) {
+		pr_info("%s, %d pages are still in use\n", __func__, ref);
+		*cnt += ref;
+		return -1;
+	}
+	return __free_pages_ok(page, order);
+}
 
 void free_pages(unsigned long addr, unsigned int order)
 {
@@ -6523,7 +6590,7 @@ try_again:
 
 	/* Make sure the range is really isolated. */
 	if (test_pages_isolated(outer_start, end, false)) {
-		pr_warn("alloc_contig_range test_pages_isolated(%lx, %lx) failed\n",
+		pr_debug("alloc_contig_range test_pages_isolated(%lx, %lx) failed\n",
 		       outer_start, end);
 		try_times++;
 		if (try_times < 10)
@@ -6555,12 +6622,37 @@ done:
 void free_contig_range(unsigned long pfn, unsigned nr_pages)
 {
 	unsigned int count = 0;
+	struct page *page;
+	int free_order, start_order = 0;
+	int batch;
 
-	for (; nr_pages--; pfn++) {
-		struct page *page = pfn_to_page(pfn);
-
-		count += page_count(page) != 1;
-		__free_page(page);
+	while (nr_pages) {
+		page = pfn_to_page(pfn);
+		batch = (1 << start_order);
+		free_order = __free_pages_cma(page, start_order, &count);
+		pr_debug("pages:%4d, free:%2d, start:%2d, batch:%4d, pfn:%ld\n",
+			nr_pages, free_order,
+			start_order, batch, pfn);
+		nr_pages -= batch;
+		pfn += batch;
+		/*
+		 * since pages are contigunous, and it's buddy already has large
+		 * order, we can try to free same oder as free_order to get more
+		 * quickly free speed.
+		 */
+		if (free_order < 0) {
+			start_order = 0;
+			continue;
+		}
+		if (nr_pages >= (1 << free_order)) {
+			start_order = free_order;
+		} else {
+			/* remain pages is not enough */
+			start_order = 0;
+			while (nr_pages >= (1 << start_order))
+				start_order++;
+			start_order--;
+		}
 	}
 	WARN(count != 0, "%d pages are still in use!\n", count);
 }

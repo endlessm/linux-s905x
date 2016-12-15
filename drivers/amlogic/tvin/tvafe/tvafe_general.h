@@ -18,6 +18,8 @@
 #define HHI_VID_CLK_CNTL2			0x1065
 #define HHI_VID_DIVIDER_CNTL			0x1066
 
+#define RESET1_REGISTER				0x1102
+
 #define VENC_VDAC_DACSEL0			0x1b78
 #define P_VENC_VDAC_DACSEL0		VCBUS_REG_ADDR(VENC_VDAC_DACSEL0)
 #define VENC_VDAC_DACSEL1			0x1b79
@@ -95,6 +97,12 @@
 #define P_HHI_ADC_PLL_CNTL3			CBUS_REG_ADDR(HHI_ADC_PLL_CNTL3)
 #define HHI_ADC_PLL_CNTL4			0x10ad
 #define P_HHI_ADC_PLL_CNTL4			CBUS_REG_ADDR(HHI_ADC_PLL_CNTL4)
+#define HHI_ADC_PLL_CNTL5			0x109e
+#define P_HHI_ADC_PLL_CNTL5			CBUS_REG_ADDR(HHI_ADC_PLL_CNTL5)
+#define HHI_ADC_PLL_CNTL6			0x109f
+#define P_HHI_ADC_PLL_CNTL6			CBUS_REG_ADDR(HHI_ADC_PLL_CNTL6)
+#define HHI_ADC_PLL_CNTL1			0x10af
+#define P_HHI_ADC_PLL_CNTL1			CBUS_REG_ADDR(HHI_ADC_PLL_CNTL1)
 #define HHI_GCLK_OTHER              0x1054
 
 
@@ -202,6 +210,8 @@ extern void tvafe_enable_avout(enum tvin_port_e port, bool enable);
  * module index: atv demod:0x01; dtv demod:0x02; tvafe:0x4; dac:0x8
 */
 void vdac_enable(bool on, unsigned int module_sel);
+
+extern struct mutex pll_mutex;
 
 #endif  /* _TVAFE_GENERAL_H */
 

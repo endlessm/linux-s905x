@@ -19,6 +19,10 @@
 #ifndef AM_CSC_H
 #define AM_CSC_H
 
+/* white balance value */
+extern void ve_ogo_param_update(void);
+extern struct tcon_rgb_ogo_s video_rgb_ogo;
+
 enum vpp_matrix_sel_e {
 	VPP_MATRIX_0 = 0,	/* OSD convert matrix - new from GXL */
 	VPP_MATRIX_1,		/* vd1 matrix before post-blend */
@@ -95,7 +99,7 @@ extern unsigned int vecm_latch_flag;
 extern signed int vd1_contrast_offset;
 
 extern void amvecm_matrix_process(struct vframe_s *vf);
-extern int amvecm_hdr_dbg(void);
+extern int amvecm_hdr_dbg(u32 sel);
 
 /* use osd rdma w/r */
 u32 VSYNCOSD_RD_MPEG_REG(u32 reg);

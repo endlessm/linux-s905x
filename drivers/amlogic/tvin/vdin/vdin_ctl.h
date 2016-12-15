@@ -144,6 +144,7 @@ extern unsigned int vdin_get_field_type(unsigned int offset);
 extern int vdin_vsync_reset_mif(int index);
 extern void vdin_set_cutwin(struct vdin_dev_s *devp);
 extern void vdin_set_decimation(struct vdin_dev_s *devp);
+extern void vdin_fix_nonstd_vsync(struct vdin_dev_s *devp);
 extern unsigned int vdin_get_meas_hcnt64(unsigned int offset);
 extern unsigned int vdin_get_meas_vstamp(unsigned int offset);
 extern unsigned int vdin_get_active_h(unsigned int offset);
@@ -178,6 +179,7 @@ extern void vdin_set_cm2(unsigned int offset, unsigned int w,
 extern void vdin_bypass_isp(unsigned int offset);
 extern void vdin_set_mpegin(struct vdin_dev_s *devp);
 extern void vdin_force_gofiled(struct vdin_dev_s *devp);
+extern void vdin_set_config(struct vdin_dev_s *devp);
 
 #endif
 
