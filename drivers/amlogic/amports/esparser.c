@@ -61,7 +61,10 @@
 #define PARSER_BUSY         (ES_PARSER_BUSY)
 
 static unsigned char *search_pattern;
+static unsigned char *header_pattern;
 static dma_addr_t search_pattern_map;
+static dma_addr_t header_pattern_map;
+
 static u32 audio_real_wp;
 static u32 audio_buf_start;
 static u32 audio_buf_end;
@@ -194,18 +197,31 @@ static irqreturn_t esparser_isr(int irq, void *dev_id)
 
 void esparser_start_search(u32 parser_type, u32 phys_addr, u32 len)
 {
+	int framesize = len + 4;
 	/* wmb(); don't need */
 	/* reset the Write and read pointer to zero again */
 	printk(KERN_EMERG "[%s] ==> Enter (len: %d, parser_type: %d, phys_addr: 0x%08x)\n", __func__, len, parser_type, phys_addr);
 	WRITE_MPEG_REG(PFIFO_RD_PTR, 0);
 	WRITE_MPEG_REG(PFIFO_WR_PTR, 0);
 
-	WRITE_MPEG_REG_BITS(PARSER_CONTROL, len, ES_PACK_SIZE_BIT,
+	WRITE_MPEG_REG_BITS(PARSER_CONTROL, len + 16, ES_PACK_SIZE_BIT,
 						ES_PACK_SIZE_WID);
 	WRITE_MPEG_REG_BITS(PARSER_CONTROL,
 			parser_type | PARSER_WRITE |
 			PARSER_AUTOSEARCH, ES_CTRL_BIT,
 			ES_CTRL_WID);
+
+	header_pattern[0] = (framesize >> 24) & 0xff;
+	header_pattern[1] = (framesize >> 16) & 0xff;
+	header_pattern[2] = (framesize >> 8) & 0xff;
+	header_pattern[3] = (framesize >> 0) & 0xff;
+	header_pattern[4] = ((framesize >> 24) & 0xff) ^0xff;
+	header_pattern[5] = ((framesize >> 16) & 0xff) ^0xff;
+	header_pattern[6] = ((framesize >> 8) & 0xff) ^0xff;
+	header_pattern[7] = ((framesize >> 0) & 0xff) ^0xff;
+
+	WRITE_MPEG_REG(PARSER_FETCH_ADDR, header_pattern_map);
+	WRITE_MPEG_REG(PARSER_FETCH_CMD, (7 << FETCH_ENDIAN) | 16);
 
 	WRITE_MPEG_REG(PARSER_FETCH_ADDR, phys_addr);
 	WRITE_MPEG_REG(PARSER_FETCH_CMD, (7 << FETCH_ENDIAN) | len);
@@ -457,6 +473,37 @@ s32 esparser_init(struct stream_buf_s *buf)
 			pr_info("%s: no fetchbuf\n", __func__);
 			r = -ENOMEM;
 			goto Err_1;
+		}
+
+		if (header_pattern == NULL) {
+			header_pattern = kcalloc(1,
+				16,
+				GFP_KERNEL);
+
+		header_pattern[8] = 0;
+		header_pattern[9] = 0;
+		header_pattern[10] = 0;
+		header_pattern[11] = 1;
+		header_pattern[12] = 'A';
+		header_pattern[13] = 'M';
+		header_pattern[14] = 'L';
+		header_pattern[15] = 'V';
+
+			if (header_pattern == NULL) {
+				pr_err("%s: no header_pattern\n", __func__);
+				r = -ENOMEM;
+				goto Err_1;
+			}
+
+			header_pattern = dma_alloc_coherent(amports_get_dma_device(), 16,
+					    &header_pattern_map, GFP_KERNEL);
+
+//			header_pattern_map = dma_map_single(
+//					amports_get_dma_device(),
+//					header_pattern,
+//					16,
+//					DMA_TO_DEVICE);
+
 		}
 
 		if (search_pattern == NULL) {
