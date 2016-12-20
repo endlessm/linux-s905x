@@ -830,11 +830,21 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 	port->vformat = ctx->ll_link->vformat;
 	port->flag |= PORT_FLAG_VFORMAT;
 	ret = video_port_init(port, sbuf);
-	if (ret) {
-		amstream_port_release(port);
-		dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
-				  sbuf->buf_start);
-		return ret;
+	if (ret)
+		goto err_free_sbuf;
+
+	if (ctx->stream.type == VDEC_H264) {
+		vh264_set_params_cb(ctx, h264_params_cb);
+		ctx->eos_tail_buf = dma_alloc_coherent(ctx->dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE,
+						       &ctx->eos_tail_buf_phys,
+						       GFP_KERNEL);
+		if (!ctx->eos_tail_buf) {
+			ret = -ENOMEM;
+			goto err_free_sbuf;
+		}
+
+		memset(ctx->eos_tail_buf, 0, EOS_TAIL_BUF_SIZE);
+		memcpy(ctx->eos_tail_buf, eos_tail_data, sizeof(eos_tail_data));
 	}
 
 	ctx->frame_width = ctx->frame_height = 0;
@@ -848,6 +858,12 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 	spin_unlock_irqrestore(&ctx->data_lock, flags);
 
 	return 0;
+
+err_free_sbuf:
+	amstream_port_release(port);
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
+			  sbuf->buf_start);
+	return ret;
 }
 
 static int vdec_src_stop_streaming(struct vb2_queue *vq)
@@ -859,6 +875,9 @@ static int vdec_src_stop_streaming(struct vb2_queue *vq)
 
 	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
 		          ctx->stream.sbuf->buf_start);
+
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE, ctx->eos_tail_buf,
+			  ctx->eos_tail_buf_phys);
 
 	/* FIXME: calls video_port_release internally, which means the API
 	 * is not really symmetrical with the init routines. */
@@ -1182,7 +1201,6 @@ static int meson_vdec_open(struct file *file)
 	}
 
 	esparser_set_search_done_cb(ctx, parser_cb);
-	vh264_set_params_cb(ctx, h264_params_cb);
 	v4l2_fh_init(&ctx->fh, video_devdata(file));
 	file->private_data = &ctx->fh;
 	ctx->dev = dev;
@@ -1196,23 +1214,10 @@ static int meson_vdec_open(struct file *file)
 	ctx->eos_idle_timer.function = eos_check_idle;
 	ctx->eos_idle_timer.data = (unsigned long) ctx;
 
-
-	ctx->eos_tail_buf = dma_alloc_coherent(dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE,
-					       &ctx->eos_tail_buf_phys,
-					       GFP_KERNEL);
-	if (!ctx->eos_tail_buf) {
-		ret = -ENOMEM;
-		goto err_free_ctx;
-	}
-
-	memset(ctx->eos_tail_buf, 0, EOS_TAIL_BUF_SIZE);
-	memcpy(ctx->eos_tail_buf, eos_tail_data, sizeof(eos_tail_data));
-
-
 	ctx->m2m_ctx = v4l2_m2m_ctx_init(dev->m2m_dev, ctx, &queue_init);
 	if (IS_ERR(ctx->m2m_ctx)) {
 		ret = PTR_ERR(ctx->m2m_ctx);
-		goto err_free_buf2;
+		goto err_free_ctx;
 	}
 
 	v4l2_fh_add(&ctx->fh);
@@ -1237,9 +1242,6 @@ open_unlock:
 err_del_fh:
 	v4l2_fh_del(&ctx->fh);
 
-err_free_buf2:
-	dma_free_coherent(dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE, ctx->eos_tail_buf,
-			  ctx->eos_tail_buf_phys);
 err_free_ctx:
 	kfree(ctx);
 	goto open_unlock;
@@ -1258,9 +1260,6 @@ static int meson_vdec_release(struct file *file)
 	v4l2_fh_exit(&ctx->fh);
 	mutex_lock(&dev->dev_mutex);
 	v4l2_m2m_ctx_release(ctx->m2m_ctx);
-
-	dma_free_coherent(ctx->dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE, ctx->eos_tail_buf,
-		ctx->eos_tail_buf_phys);
 
 	dev->open = false;
 	mutex_unlock(&dev->dev_mutex);
