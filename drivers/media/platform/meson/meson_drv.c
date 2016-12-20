@@ -102,6 +102,7 @@ enum eos_state {
 
 enum vdec_stream_type {
 	VDEC_H264,
+	VDEC_VP9,
 	VDEC_NUM,
 };
 
@@ -127,16 +128,28 @@ static struct vdec_fmt_out {
 		.name = "H264",
 		.pixelformat = V4L2_PIX_FMT_H264,
 	},
+	{
+		.name = "VP9",
+		.pixelformat = V4L2_PIX_FMT_VP9,
+	},
+
 };
 
 
 static struct vdec_ll_link {
 	const char *port_name;
 	int sbuf_type;
+	int vformat;
 } ll_link[] = {
 	{
 		.port_name = "amstream_vbuf",
 		.sbuf_type = PTS_TYPE_VIDEO,
+		.vformat = VFORMAT_H264,
+	},
+	{
+		.port_name = "amstream_hevc",
+		.sbuf_type = PTS_TYPE_HEVC,
+		.vformat = VFORMAT_VP9,
 	},
 };
 
@@ -518,7 +531,10 @@ static int vidioc_g_fmt_vid_out(struct file *file, void *priv,
 	struct vdec_ctx *ctx = file2ctx(file);
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "g_fmt_vid_out\n");
 
-	f->fmt.pix_mp.pixelformat = V4L2_PIX_FMT_H264;
+	if (ctx->stream.type == VDEC_H264)
+		f->fmt.pix_mp.pixelformat = V4L2_PIX_FMT_H264;
+	else
+		f->fmt.pix_mp.pixelformat = V4L2_PIX_FMT_VP9;
 	f->fmt.pix_mp.width = f->fmt.pix_mp.height = 0;
 	f->fmt.pix_mp.field = V4L2_FIELD_NONE;
 	f->fmt.pix_mp.num_planes = 1;
@@ -584,7 +600,8 @@ static int vidioc_try_fmt_vid_out(struct file *file, void *priv,
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "ioc_try_fmt_vid_out\n");
 
-	if (f->fmt.pix_mp.pixelformat != V4L2_PIX_FMT_H264)
+	if ((f->fmt.pix_mp.pixelformat != V4L2_PIX_FMT_H264) &&
+	    (f->fmt.pix_mp.pixelformat != V4L2_PIX_FMT_VP9))
 		return -EINVAL;
 
 	f->fmt.pix_mp.num_planes = 1;
@@ -628,6 +645,8 @@ static int vidioc_s_fmt_vid_out(struct file *file, void *priv,
 		ctx->src_bufs_size = f->fmt.pix_mp.plane_fmt[0].sizeimage;
 		if (f->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_H264)
 			ctx->stream.type = VDEC_H264;
+		else if (f->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_VP9)
+			ctx->stream.type = VDEC_VP9;
 		else
 			return -EINVAL;
 	}
@@ -808,7 +827,7 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 	/* enable sync_outside and pts_outside */
 	amstream_dec_info.param = (void *) 0x3;
 
-	port->vformat = VFORMAT_H264;
+	port->vformat = ctx->ll_link->vformat;
 	port->flag |= PORT_FLAG_VFORMAT;
 	ret = video_port_init(port, sbuf);
 	if (ret) {
