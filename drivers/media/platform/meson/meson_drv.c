@@ -100,10 +100,15 @@ enum eos_state {
 	EOS_DETECTED,
 };
 
-static struct vdec_fmt {
+enum vdec_stream_type {
+	VDEC_H264,
+	VDEC_NUM,
+};
+
+static struct vdec_fmt_cap {
 	const char *name;
 	u32 pixelformat;
-} formats[] = {
+} formats_cap[] = {
 	{
 		.name = "NV12",
 		.pixelformat = V4L2_PIX_FMT_NV12M,
@@ -114,12 +119,40 @@ static struct vdec_fmt {
 	},
 };
 
+static struct vdec_fmt_out {
+	const char *name;
+	u32 pixelformat;
+} formats_out[] = {
+	{
+		.name = "H264",
+		.pixelformat = V4L2_PIX_FMT_H264,
+	},
+};
+
+
+static struct vdec_ll_link {
+	const char *port_name;
+	int sbuf_type;
+} ll_link[] = {
+	{
+		.port_name = "amstream_vbuf",
+		.sbuf_type = PTS_TYPE_VIDEO,
+	},
+};
+
+struct vdec_stream_data {
+	enum vdec_stream_type type;
+	stream_port_t *port;
+	stream_buf_t *sbuf;
+};
+
 struct vdec_ctx {
 	struct v4l2_fh		fh;
 	struct vdec_dev	*dev;
 	struct v4l2_m2m_ctx	*m2m_ctx;
 	struct task_struct *image_thread;
-	struct vdec_fmt *fmt;
+	struct vdec_fmt_cap *fmt;
+	struct vdec_ll_link *ll_link;
 	struct timer_list eos_idle_timer;
 	struct vframe_receiver_s vf_receiver;
 
@@ -134,6 +167,7 @@ struct vdec_ctx {
 	int src_bufs_size;
 	int src_bufs_cnt;
 	int dst_bufs_cnt;
+	struct vdec_stream_data stream;
 	struct vdec_buf src_bufs[VDEC_MAX_BUFFERS];
 	struct vdec_buf dst_bufs[VDEC_MAX_BUFFERS];
 
@@ -158,7 +192,7 @@ struct buffer_size_info {
 	unsigned int buffer_size[2];
 };
 
-static void get_buffer_size_info(struct vdec_fmt *fmt, u32 width, u32 height,
+static void get_buffer_size_info(struct vdec_fmt_cap *fmt, u32 width, u32 height,
 			struct buffer_size_info *i)
 {
 	/* GE2D can only work with output buffers with certain aligned widths */
@@ -447,14 +481,14 @@ static int vidioc_enum_fmt_vid_cap(struct file *file, void *priv,
 				   struct v4l2_fmtdesc *f)
 {
 	struct vdec_ctx *ctx = file2ctx(file);
-	struct vdec_fmt *fmt;
+	struct vdec_fmt_cap *fmt;
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "enum_fmt_vid_cap\n");
 
-	if (f->index >= ARRAY_SIZE(formats))
+	if (f->index >= ARRAY_SIZE(formats_cap))
 		return -EINVAL;
 
-	fmt = &formats[f->index];
+	fmt = &formats_cap[f->index];
 	strlcpy(f->description, fmt->name, sizeof(f->description));
 	f->pixelformat = fmt->pixelformat;
 	return 0;
@@ -464,13 +498,17 @@ static int vidioc_enum_fmt_vid_out(struct file *file, void *priv,
 				   struct v4l2_fmtdesc *f)
 {
 	struct vdec_ctx *ctx = file2ctx(file);
+	struct vdec_fmt_out *fmt;
+
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "enum_fmt_vid_out\n");
 
-        if (f->index != 0)
+        if (f->index >= ARRAY_SIZE(formats_out))
 		return -EINVAL;
 
-	snprintf(f->description, sizeof(f->description), "H264");
-	f->pixelformat = V4L2_PIX_FMT_H264;
+	fmt = &formats_out[f->index];
+	strlcpy(f->description, fmt->name, sizeof(f->description));
+	f->pixelformat = fmt->pixelformat;
+
 	return 0;
 }
 
@@ -509,7 +547,7 @@ static int vidioc_g_fmt_vid_cap(struct file *file, void *priv,
 static int try_fmt_vid_cap(struct vdec_ctx *ctx, struct v4l2_format *f,
 			   bool set)
 {
-	struct vdec_fmt *fmt = &formats[0];
+	struct vdec_fmt_cap *fmt = &formats_cap[0];
 	int i;
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "ioc_try_fmt_vid_cap\n");
@@ -517,9 +555,9 @@ static int try_fmt_vid_cap(struct vdec_ctx *ctx, struct v4l2_format *f,
 	/* V4L2 specification suggests the driver corrects the format struct
 	* if any of the dimensions is unsupported */
 
-	for (i = 0; i < ARRAY_SIZE(formats); i++) {
-		if (formats[i].pixelformat == f->fmt.pix_mp.pixelformat)
-			fmt = &formats[i];
+	for (i = 0; i < ARRAY_SIZE(formats_cap); i++) {
+		if (formats_cap[i].pixelformat == f->fmt.pix_mp.pixelformat)
+			fmt = &formats_cap[i];
 	}
 
 	if (set)
@@ -546,7 +584,9 @@ static int vidioc_try_fmt_vid_out(struct file *file, void *priv,
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "ioc_try_fmt_vid_out\n");
 
-	f->fmt.pix_mp.pixelformat = V4L2_PIX_FMT_H264;
+	if (f->fmt.pix_mp.pixelformat != V4L2_PIX_FMT_H264)
+		return -EINVAL;
+
 	f->fmt.pix_mp.num_planes = 1;
 	f->fmt.pix_mp.plane_fmt[0].bytesperline = 0;
 
@@ -584,8 +624,13 @@ static int vidioc_s_fmt_vid_out(struct file *file, void *priv,
 
 	ret = vidioc_try_fmt_vid_out (file, priv, f);
 
-	if (ret == 0)
+	if (ret == 0) {
 		ctx->src_bufs_size = f->fmt.pix_mp.plane_fmt[0].sizeimage;
+		if (f->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_H264)
+			ctx->stream.type = VDEC_H264;
+		else
+			return -EINVAL;
+	}
 
         return ret;
 }
@@ -733,12 +778,31 @@ static const struct v4l2_ioctl_ops vdec_ioctl_ops = {
 static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 {
 	struct vdec_ctx *ctx = vb2_get_drv_priv(vq);
-	stream_port_t *port = amstream_find_port("amstream_vbuf");
-	stream_buf_t *sbuf = get_buf_by_type(BUF_TYPE_VIDEO);
+	stream_port_t *port;
+	stream_buf_t *sbuf;
 	unsigned long flags;
 	int ret;
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "src_start_streaming\n");
+
+	ctx->ll_link = &ll_link[ctx->stream.type];
+	ctx->stream.port = amstream_find_port(ctx->ll_link->port_name);
+	ctx->stream.sbuf = get_buf_by_type(ctx->ll_link->sbuf_type);
+
+	if (!ctx->stream.port || !ctx->stream.sbuf)
+		return -ENOENT;
+
+	port = ctx->stream.port;
+	sbuf = ctx->stream.sbuf;
+
+	ctx->buf_vaddr = dma_alloc_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE,
+					    (dma_addr_t *) &sbuf->buf_start, GFP_KERNEL);
+
+	if (!ctx->buf_vaddr)
+		return -ENOMEM;
+
+	sbuf->buf_size = sbuf->default_buf_size = VDEC_ST_FIFO_SIZE;
+	sbuf->flag = BUF_FLAG_IOMEM;
 
 	amstream_port_open(port);
 	/* enable sync_outside and pts_outside */
@@ -748,7 +812,9 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 	port->flag |= PORT_FLAG_VFORMAT;
 	ret = video_port_init(port, sbuf);
 	if (ret) {
-		amstream_port_release(amstream_find_port("amstream_vbuf"));
+		amstream_port_release(port);
+		dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
+				  sbuf->buf_start);
 		return ret;
 	}
 
@@ -772,9 +838,12 @@ static int vdec_src_stop_streaming(struct vb2_queue *vq)
 	kthread_park(ctx->image_thread);
 	del_timer_sync(&ctx->eos_idle_timer);
 
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
+		          ctx->stream.sbuf->buf_start);
+
 	/* FIXME: calls video_port_release internally, which means the API
 	 * is not really symmetrical with the init routines. */
-	amstream_port_release(amstream_find_port("amstream_vbuf"));
+	amstream_port_release(ctx->stream.port);
 	ctx->esparser_busy = false;
 	ctx->eos_state = EOS_NONE;
 
@@ -1076,12 +1145,8 @@ static int meson_vdec_open(struct file *file)
 	struct vdec_dev *dev = video_drvdata(file);
 	struct vdec_ctx *ctx = NULL;
 	int ret = 0;
-	stream_port_t *port = amstream_find_port("amstream_vbuf");
-	stream_buf_t *sbuf = get_buf_by_type(BUF_TYPE_VIDEO);
 
 	v4l2_dbg(1, debug, &dev->v4l2_dev, "vdec_open\n");
-	if (!port)
-		return -ENOENT;
 
 	if (mutex_lock_interruptible(&dev->dev_mutex))
 		return -ERESTARTSYS;
@@ -1104,7 +1169,7 @@ static int meson_vdec_open(struct file *file)
 	ctx->dev = dev;
 	ctx->esparser_busy = false;
 	ctx->parsed_len = 0;
-	ctx->fmt = &formats[0];
+	ctx->fmt = &formats_cap[0];
 	spin_lock_init(&ctx->data_lock);
 	init_waitqueue_head(&ctx->esparser_queue);
 
@@ -1112,27 +1177,18 @@ static int meson_vdec_open(struct file *file)
 	ctx->eos_idle_timer.function = eos_check_idle;
 	ctx->eos_idle_timer.data = (unsigned long) ctx;
 
-	ctx->buf_vaddr = dma_alloc_coherent(dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE,
-					    (dma_addr_t *) &sbuf->buf_start, GFP_KERNEL);
-
-	if (!ctx->buf_vaddr) {
-		ret = -ENOMEM;
-		goto err_free_ctx;
-	}
 
 	ctx->eos_tail_buf = dma_alloc_coherent(dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE,
 					       &ctx->eos_tail_buf_phys,
 					       GFP_KERNEL);
 	if (!ctx->eos_tail_buf) {
 		ret = -ENOMEM;
-		goto err_free_buf;
+		goto err_free_ctx;
 	}
 
 	memset(ctx->eos_tail_buf, 0, EOS_TAIL_BUF_SIZE);
 	memcpy(ctx->eos_tail_buf, eos_tail_data, sizeof(eos_tail_data));
 
-	sbuf->buf_size = sbuf->default_buf_size = VDEC_ST_FIFO_SIZE;
-	sbuf->flag = BUF_FLAG_IOMEM;
 
 	ctx->m2m_ctx = v4l2_m2m_ctx_init(dev->m2m_dev, ctx, &queue_init);
 	if (IS_ERR(ctx->m2m_ctx)) {
@@ -1165,9 +1221,6 @@ err_del_fh:
 err_free_buf2:
 	dma_free_coherent(dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE, ctx->eos_tail_buf,
 			  ctx->eos_tail_buf_phys);
-err_free_buf:
-	dma_free_coherent(dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
-			  sbuf->buf_start);
 err_free_ctx:
 	kfree(ctx);
 	goto open_unlock;
@@ -1177,7 +1230,6 @@ static int meson_vdec_release(struct file *file)
 {
 	struct vdec_dev *dev = video_drvdata(file);
 	struct vdec_ctx *ctx = file2ctx(file);
-	stream_buf_t *sbuf = get_buf_by_type(BUF_TYPE_VIDEO);
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "vdec_release\n");
 
@@ -1187,8 +1239,6 @@ static int meson_vdec_release(struct file *file)
 	v4l2_fh_exit(&ctx->fh);
 	mutex_lock(&dev->dev_mutex);
 	v4l2_m2m_ctx_release(ctx->m2m_ctx);
-	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
-		          sbuf->buf_start);
 
 	dma_free_coherent(ctx->dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE, ctx->eos_tail_buf,
 		ctx->eos_tail_buf_phys);
