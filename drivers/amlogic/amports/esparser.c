@@ -476,9 +476,9 @@ s32 esparser_init(struct stream_buf_s *buf)
 		}
 
 		if (header_pattern == NULL) {
-			header_pattern = kcalloc(1,
-				16,
-				GFP_KERNEL);
+
+			header_pattern = dma_alloc_coherent(amports_get_dma_device(), 16,
+					    &header_pattern_map, GFP_KERNEL);
 
 		header_pattern[8] = 0;
 		header_pattern[9] = 0;
@@ -489,14 +489,6 @@ s32 esparser_init(struct stream_buf_s *buf)
 		header_pattern[14] = 'L';
 		header_pattern[15] = 'V';
 
-			if (header_pattern == NULL) {
-				pr_err("%s: no header_pattern\n", __func__);
-				r = -ENOMEM;
-				goto Err_1;
-			}
-
-			header_pattern = dma_alloc_coherent(amports_get_dma_device(), 16,
-					    &header_pattern_map, GFP_KERNEL);
 
 //			header_pattern_map = dma_map_single(
 //					amports_get_dma_device(),
