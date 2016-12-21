@@ -134,8 +134,33 @@ static void h264_params_cb(void *data, int status, u32 width, u32 height)
 		return;
 	}
 
-//	ctx->frame_width = width;
-//	ctx->frame_height = height;
+	ctx->frame_width = width;
+	ctx->frame_height = height;
+	ctx->hdr_parse_state = HEADER_PARSED;
+	v4l2_event_queue_fh(&ctx->fh, &ev);
+}
+
+static void vp9_params_cb(void *data, int status, u32 width, u32 height)
+{
+	struct vdec_ctx *ctx = data;
+	const struct v4l2_event ev = {
+		.type = V4L2_EVENT_SOURCE_CHANGE,
+		.u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION,
+	};
+
+	v4l2_info(&ctx->dev->v4l2_dev, "h264_params_cb status=%d w=%d h=%d\n",
+		  status, width, height);
+
+	if (status) {
+		v4l2_err(&ctx->dev->v4l2_dev, "H264 params error.\n");
+		return;
+	}
+
+	if (ctx->frame_width == width && ctx->frame_height == height)
+		return;
+
+	ctx->frame_width = width;
+	ctx->frame_height = height;
 	ctx->hdr_parse_state = HEADER_PARSED;
 	v4l2_event_queue_fh(&ctx->fh, &ev);
 }
@@ -151,8 +176,8 @@ static void parser_cb(void *data)
 	src_buf = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
 	v4l2_m2m_buf_done(src_buf, VB2_BUF_STATE_DONE);
 	v4l2_m2m_job_finish(ctx->dev->m2m_dev, ctx->m2m_ctx);
-	if (ctx->hdr_parse_state != HEADER_PARSED)
-		h264_params_cb(data, 0, 0, 0);
+//	if (ctx->hdr_parse_state != HEADER_PARSED)
+//		h264_params_cb(data, 0, 0, 0);
 }
 
 /*
@@ -775,6 +800,7 @@ static int meson_vdec_open(struct file *file)
 
 	esparser_set_search_done_cb(ctx, parser_cb);
 //	vh264_set_params_cb(ctx, h264_params_cb);
+	vp9_set_params_cb(ctx, vp9_params_cb);
 	v4l2_fh_init(&ctx->fh, video_devdata(file));
 	file->private_data = &ctx->fh;
 	ctx->dev = dev;
@@ -782,8 +808,8 @@ static int meson_vdec_open(struct file *file)
 //	ctx->hdr_parse_state = HEADER_PARSED;
 	
 	// TODO: CC
-	ctx->frame_width = 512;
-	ctx->frame_height = 288;
+//	ctx->frame_width = 512;
+//	ctx->frame_height = 288;
 
 //	ctx->buf_vaddr = dma_alloc_coherent(dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE,
 //					    (dma_addr_t *) &sbuf->buf_start, GFP_KERNEL);

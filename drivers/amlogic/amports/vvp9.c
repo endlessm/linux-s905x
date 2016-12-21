@@ -677,6 +677,14 @@ struct VP9_Common_s {
 static void set_canvas(struct PIC_BUFFER_CONFIG_s *pic_config);
 static int prepare_display_buf(struct VP9Decoder_s *pbi,
 					struct PIC_BUFFER_CONFIG_s *pic_config);
+static void *params_cb_data;
+static void (*params_cb)(void *data, int status, u32 width, u32 height) = NULL;
+
+void vp9_set_params_cb(void *data, void *cb)
+{
+	params_cb_data = data;
+	params_cb = cb;
+}
 static int get_free_fb(struct VP9_Common_s *cm)
 {
 	struct RefCntBuffer_s *const frame_bufs = cm->buffer_pool->frame_bufs;
@@ -3657,6 +3665,8 @@ static int config_pic_size(struct VP9Decoder_s *pbi, unsigned short bit_depth)
 	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	frame_width = cur_pic_config->y_crop_width;
 	frame_height = cur_pic_config->y_crop_height;
+	if (params_cb)
+		params_cb(params_cb_data, 0, frame_width, frame_height);
 	cur_pic_config->bit_depth = bit_depth;
 	losless_comp_header_size =
 		compute_losless_comp_header_size(cur_pic_config->y_crop_width,
