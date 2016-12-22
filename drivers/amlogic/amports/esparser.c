@@ -175,15 +175,10 @@ static irqreturn_t esparser_isr(int irq, void *dev_id)
 	char *start_frame = ss_buf->buf_vaddr + (ss_buf->latest_wr_ptr - ss_buf->buf_start);
 	char *end_frame = ss_buf->buf_vaddr + (wr_ptr - ss_buf->buf_start);
 
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
-	printk(KERN_EMERG "[%s] ==> buf vaddr (0x%p), RD_PTR: 0x%08x, WR_PTR:0x%08x (latest: 0x%08x)\n", __func__,
-			ss_buf->buf_vaddr, stbuf_rp(ss_buf), wr_ptr, ss_buf->latest_wr_ptr);
-	printk(KERN_EMERG "[%s] ==> start_frame: 0x%p, end_frame: 0x%p, len:%zu\n", __func__, (void *) start_frame, (void *) end_frame, len);
 
 //	debug_file_write_cc("in_vififo", start_frame, len);
 
 	WRITE_MPEG_REG(PARSER_INT_STATUS, int_status);
-	printk(KERN_EMERG "[%s] ==> Status: 0x%02x\n", __func__, int_status);
 
 	ss_buf->latest_wr_ptr = wr_ptr;
 	if (int_status & PARSER_INTSTAT_SC_FOUND) {
@@ -203,7 +198,6 @@ void esparser_start_search(u32 parser_type, u32 phys_addr, u32 len)
 	int framesize = len + 4;
 	/* wmb(); don't need */
 	/* reset the Write and read pointer to zero again */
-	printk(KERN_EMERG "[%s] ==> Enter (len: %d, parser_type: %d, phys_addr: 0x%08x)\n", __func__, len, parser_type, phys_addr);
 	WRITE_MPEG_REG(PFIFO_RD_PTR, 0);
 	WRITE_MPEG_REG(PFIFO_WR_PTR, 0);
 
@@ -249,7 +243,6 @@ void esparser_start_search(u32 parser_type, u32 phys_addr, u32 len)
 	int ret;
 	u32 wp;
 	dma_addr_t dma_addr = 0;
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 
 	if (type == BUF_TYPE_HEVC)
 		parser_type = PARSER_VIDEO;
@@ -259,7 +252,6 @@ void esparser_start_search(u32 parser_type, u32 phys_addr, u32 len)
 		parser_type = PARSER_AUDIO;
 	else
 		parser_type = PARSER_SUBPIC;
-	printk(KERN_EMERG "[%s] ==> Enter (count: %zu, type: %d, parser_type: %d)\n", __func__, count, type, parser_type);
 
 	wp = buf_wp(type);
 
@@ -290,10 +282,8 @@ void esparser_start_search(u32 parser_type, u32 phys_addr, u32 len)
 					FETCHBUF_SIZE, DMA_TO_DEVICE);
 		}
 
-		printk(KERN_EMERG "[%s] ==> Waiting for search_done\n", __func__);
 		ret = wait_event_interruptible_timeout(wq, search_done != 0,
 			HZ / 5);
-		printk(KERN_EMERG "[%s] ==> Search completed\n", __func__);
 		if (ret == 0) {
 			WRITE_MPEG_REG(PARSER_FETCH_CMD, 0);
 
@@ -447,7 +437,6 @@ s32 esparser_init(struct stream_buf_s *buf)
 	u32 parser_sub_rp;
 	bool first_use = false;
 	ss_buf = buf;
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	/* #if MESON_CPU_TYPE >= MESON_CPU_TYPE_MESON8 */
 	if (has_hevc_vdec() && (buf->type == BUF_TYPE_HEVC))
 		pts_type = PTS_TYPE_HEVC;

@@ -1163,7 +1163,6 @@ int vp9_bufmgr_process(struct VP9Decoder_s *pbi, union param_u *params)
 	struct BufferPool_s *pool = cm->buffer_pool;
 	struct RefCntBuffer_s *frame_bufs = cm->buffer_pool->frame_bufs;
 	int i, mask, ref_index = 0;
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 
 	pbi->ready_for_new_data = 0;
 
@@ -1539,7 +1538,6 @@ int vp9_get_raw_frame(struct VP9Decoder_s *pbi, struct PIC_BUFFER_CONFIG_s *sd)
 	struct VP9_Common_s *const cm = &pbi->common;
 	int ret = -1;
 
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	if (pbi->ready_for_new_data == 1)
 		return ret;
 
@@ -1560,7 +1558,6 @@ int vp9_get_raw_frame(struct VP9Decoder_s *pbi, struct PIC_BUFFER_CONFIG_s *sd)
 int vp9_bufmgr_init(struct VP9Decoder_s *pbi, struct BuffInfo_s *buf_spec_i,
 		struct buff_s *mc_buf_i) {
 	struct VP9_Common_s *cm = &pbi->common;
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 
 	/*memset(pbi, 0, sizeof(struct VP9Decoder));*/
 	pbi->frame_count = 0;
@@ -1617,7 +1614,6 @@ int vp9_bufmgr_postproc(struct VP9Decoder_s *pbi)
 {
 	struct VP9_Common_s *cm = &pbi->common;
 	struct PIC_BUFFER_CONFIG_s sd;
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	swap_frame_buffers(pbi);
 	if (!cm->show_existing_frame) {
 		cm->last_show_frame = cm->show_frame;
@@ -3662,7 +3658,6 @@ static int config_pic_size(struct VP9Decoder_s *pbi, unsigned short bit_depth)
 	int losless_comp_header_size, losless_comp_body_size;
 	struct VP9_Common_s *cm = &pbi->common;
 	struct PIC_BUFFER_CONFIG_s *cur_pic_config = &cm->cur_frame->buf;
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	frame_width = cur_pic_config->y_crop_width;
 	frame_height = cur_pic_config->y_crop_height;
 	if (params_cb)
@@ -3714,7 +3709,6 @@ static int config_mc_buffer(struct VP9Decoder_s *pbi, unsigned short bit_depth)
 
 	if (debug&VP9_DEBUG_BUFMGR)
 		pr_info("config_mc_buffer entered .....\n");
-	printk(KERN_EMERG "[%s] ==> config_mc_buffer entered .....\n", __func__);
 
 	WRITE_VREG(HEVCD_MPP_ANC_CANVAS_ACCCONFIG_ADDR,
 			(0 << 8) | (0 << 1) | 1);
@@ -4327,7 +4321,6 @@ static void vp9_init_decoder_hw(void)
 {
 	unsigned int data32;
 	int i;
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 
 	pr_info("[test.c] Entering vp9_init_decoder_hw\n");
 
@@ -4583,7 +4576,6 @@ static int vp9_local_init(struct VP9Decoder_s *pbi)
 	/*int losless_comp_header_size, losless_comp_body_size;*/
 
 	struct BuffInfo_s *cur_buf_info = NULL;
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	memset(&pbi->param, 0, sizeof(union param_u));
 
 #ifdef SUPPORT_4K2K
@@ -4906,7 +4898,6 @@ static int prepare_display_buf(struct VP9Decoder_s *pbi,
 	struct vframe_s *vf = NULL;
 	int stream_offset = pic_config->stream_offset;
 	unsigned short slice_type = pic_config->slice_type;
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 
 	if (debug & VP9_DEBUG_BUFMGR)
 		pr_info("%s index = %d\r\n", __func__, pic_config->index);
@@ -5061,9 +5052,6 @@ static int prepare_display_buf(struct VP9Decoder_s *pbi,
 		if ((debug & VP9_DEBUG_VF_REF) == 0)
 			inc_vf_ref(pbi, pic_config->index);
 		kfifo_put(&pbi->display_q, (const struct vframe_s *)vf);
-		printk(KERN_EMERG "[%s] ==> Sending frame: %p\n", __func__, vf);
-		printk(KERN_EMERG "[%s] ==> vf->width: %d, vf->height: %d, vf->type: 0x%08x, vf->canvas0Addr: 0x%08x\n", __func__, vf->width, vf->height, vf->type, vf->canvas0Addr);
-		printk(KERN_EMERG "[%s] ==> Sending VFRAME_EVENT_PROVIDER_VFRAME_READY\n", __func__);
 		vf_notify_receiver(PROVIDER_NAME,
 				VFRAME_EVENT_PROVIDER_VFRAME_READY, NULL);
 	}
@@ -5098,18 +5086,15 @@ static irqreturn_t vvp9_isr(int irq, void *data)
 	struct VP9Decoder_s *pbi = (struct VP9Decoder_s *)data;
 	unsigned int adapt_prob_status;
 	struct VP9_Common_s *const cm = &pbi->common;
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	dec_status = READ_VREG(HEVC_DEC_STATUS_REG);
 	adapt_prob_status = READ_VREG(VP9_ADAPT_PROB_REG);
 	if (pbi->init_flag == 0) {
-		printk(KERN_EMERG "[%s] ==> pbi->init_flag == 0\n", __func__);
 		return IRQ_HANDLED;
 	}
 
 	pbi->process_busy = 1;
 	if (debug & VP9_DEBUG_BUFMGR)
 		pr_info("vp9 isr dec status  = %d\n", dec_status);
-	printk(KERN_EMERG "[%s] ==> vp9 isr dec status  = %d\n", __func__, dec_status);
 
 	if (debug & VP9_DEBUG_UCODE) {
 		if (READ_HREG(DEBUG_REG1) & 0x10000) {
@@ -5143,20 +5128,15 @@ static irqreturn_t vvp9_isr(int irq, void *data)
 	}
 
 	if (pbi->error_flag == 1) {
-		printk(KERN_EMERG "[%s] ==> pbi->error_flag == 1\n", __func__);
 		pbi->error_flag = 2;
 		pbi->process_busy = 0;
-		printk(KERN_EMERG "[%s] ==> pbi->error_flag == 1\n", __func__);
 		return IRQ_HANDLED;
 	} else if (pbi->error_flag == 3) {
-		printk(KERN_EMERG "[%s] ==> pbi->error_flag == 3\n", __func__);
 		pbi->process_busy = 0;
-		printk(KERN_EMERG "[%s] ==> pbi->error_flag == 3\n", __func__);
 		return IRQ_HANDLED;
 	}
 
 	if (is_buffer_empty(cm)) {
-		printk(KERN_EMERG "[%s] ==> is_buffer_empty(cm)\n", __func__);
 		/*
 		if (pbi->wait_buf == 0)
 			pr_info("set wait_buf to 1\r\n");
@@ -5180,7 +5160,6 @@ static irqreturn_t vvp9_isr(int irq, void *data)
 	uint8_t *cur_prob_b =
 		((uint8_t *)pbi->prob_buffer_addr) + 0x4000;
 	uint8_t *count_b = (uint8_t *)pbi->count_buffer_addr;
-	printk(KERN_EMERG "[%s] ==> (adapt_prob_status & 0xff) == 0xfd\n", __func__);
 
 	adapt_coef_probs(pbi->pic_count, (cm->last_frame_type == KEY_FRAME),
 			pre_fc, (adapt_prob_status >> 8),
@@ -5196,7 +5175,6 @@ static irqreturn_t vvp9_isr(int irq, void *data)
 
 	if (dec_status == VP9_EOS) {
 		pr_info("VP9_EOS, flush buffer\r\n");
-		printk(KERN_EMERG "[%s] ==> VP9_EOS, flush buffer\n", __func__);
 
 		vp9_bufmgr_postproc(pbi);
 
@@ -5208,13 +5186,10 @@ static irqreturn_t vvp9_isr(int irq, void *data)
 
 	if (dec_status != VP9_HEAD_PARSER_DONE) {
 		pbi->process_busy = 0;
-		printk(KERN_EMERG "[%s] ==> dec_status != VP9_HEAD_PARSER_DONE\n", __func__);
 		return IRQ_HANDLED;
 	}
 
-	printk(KERN_EMERG "[%s] ==> pbi->frame_count: %d\n", __func__, pbi->frame_count);
 	if (pbi->frame_count > 0) {
-		printk(KERN_EMERG "[%s] ==> pbi->frame_count > 0\n", __func__);
 		vp9_bufmgr_postproc(pbi);
 	}
 
@@ -5308,14 +5283,12 @@ if (debug & VP9_DEBUG_DBG_LF_PRINT) {
 	if (ret < 0) {
 		pr_info("vp9_bufmgr_process=> %d, VP9_10B_DISCARD_NAL\r\n",
 		 ret);
-		printk(KERN_EMERG "[%s] ==> vp9_bufmgr_process=> %d, VP9_10B_DISCARD_NAL\r\n", __func__, ret);
 		WRITE_VREG(HEVC_DEC_STATUS_REG, VP9_10B_DISCARD_NAL);
 		pbi->process_busy = 0;
 		return IRQ_HANDLED;
 	} else if (ret == 0) {
 		pbi->frame_count++;
 		/*pr_info("Decode Frame Data %d\n", pbi->frame_count);*/
-		printk(KERN_EMERG "[%s] ==> ret == 0 from vp9_bufmgr_process()", __func__);
 		config_pic_size(pbi, vp9_param.p.bit_depth);
 		if ((pbi->common.frame_type != KEY_FRAME)
 			&& (!pbi->common.intra_only)) {
@@ -5362,7 +5335,6 @@ if (debug & VP9_DEBUG_DBG_LF_PRINT) {
 		WRITE_VREG(HEVC_DEC_STATUS_REG, VP9_10B_DECODE_SLICE);
 	} else {
 		pr_info("Skip search next start code\n");
-		printk(KERN_EMERG "[%s] ==> Skip search next start code", __func__);
 		cm->prev_fb_idx = INVALID_IDX;
 		/*skip, search next start code*/
 		WRITE_VREG(HEVC_DEC_STATUS_REG, VP9_10B_DECODE_SLICE);
@@ -5525,7 +5497,6 @@ static void VP9_DECODE_INIT(void)
 static void vvp9_prot_init(struct VP9Decoder_s *pbi)
 {
 	unsigned int data32;
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	/* VP9_DECODE_INIT(); */
 	vp9_config_work_space_hw(pbi);
 	init_pic_list_hw(pbi);
@@ -5602,7 +5573,6 @@ static int vvp9_local_init(struct VP9Decoder_s *pbi)
 	int i;
 	int ret;
 	int width, height;
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 #ifdef DEBUG_PTS
 	pbi->pts_missed = 0;
 	pbi->pts_hit = 0;
@@ -5644,7 +5614,6 @@ TODO:FOR VERSION
 
 static s32 vvp9_init(struct VP9Decoder_s *pbi)
 {
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	init_timer(&pbi->timer);
 
 	pbi->stat |= STAT_TIMER_INIT;
@@ -5783,7 +5752,6 @@ static int amvdec_vp9_probe(struct platform_device *pdev)
 	unsigned long pre_last_frame_alloc_addr, pre_last_frame_alloc_size;
 	struct BUF_s BUF[MAX_BUF_NUM];
 	struct VP9Decoder_s *pbi = &gHevc;
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	mutex_lock(&vvp9_mutex);
 	predisp_addr = pbi->predisp_addr;
 	pre_last_frame_alloc_addr = pbi->pre_last_frame_alloc_addr;

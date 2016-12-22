@@ -440,13 +440,10 @@ static void amstream_change_vbufsize(struct stream_port_s *port,
 	struct stream_buf_s *pvbuf)
 {
 
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 	if (pvbuf->buf_start != 0) {
 		pr_info("streambuf is alloced before\n");
-		printk(KERN_EMERG "[%s] ==> pvbuf is alloced before\n", __func__);
 		return;
 	}
-	printk(KERN_EMERG "[%s] ==> pvbuf is NOT alloced before\n", __func__);
 	if (pvbuf->for_4k) {
 		pvbuf->buf_size = DEFAULT_VIDEO_BUFFER_SIZE_4K;
 		if ((pvbuf->buf_size > 30 * SZ_1M) &&
@@ -491,7 +488,6 @@ int video_port_init(struct stream_port_s *port,
 		    struct stream_buf_s *pbuf)
 {
 	int r;
-	printk(KERN_EMERG "[%s] ==> Enter (pbuf->buf_size: %d)\n", __func__, pbuf->buf_size);
 	if ((port->flag & PORT_FLAG_VFORMAT) == 0) {
 		pr_err("vformat not set\n");
 		return -EPERM;
@@ -3230,7 +3226,6 @@ static struct platform_driver amstream_driver = {
 static int __init amstream_module_init(void)
 {
 	int ret;
-	printk(KERN_EMERG "[%s] Enter\n", __func__);
 
 	vdec_set_decinfo(&amstream_dec_info);
 	if (has_hevc_vdec()) {

@@ -193,7 +193,6 @@ static void send_to_parser(struct vdec_ctx *ctx, struct vb2_buffer *buf)
 	v4l2_info(&ctx->dev->v4l2_dev,
 		  "send src buffer %d to parser, phys addr %llx size %ld\n",
 		  buf->v4l2_buf.index, phys_addr, size);
-	printk(KERN_EMERG "[%s] ==> send src buffer %d to parser, phys addr %llx size %ld\n", __func__, buf->v4l2_buf.index, phys_addr, size);
 	esparser_start_search(PARSER_VIDEO, phys_addr, size);
 //	_esparser_write(phys_addr, size, BUF_TYPE_HEVC, 1);
 }
@@ -727,8 +726,6 @@ static int image_thread(void *data) {
 			v4l2_err(&ctx->dev->v4l2_dev, "no frame?\n");
 			continue;
 		}
-		printk(KERN_EMERG "[%s] ==> got frame: %p\n", __func__, vf);
-		printk(KERN_EMERG "[%s] ==> vf->width: %d, vf->height: %d, vf->type: 0x%08x, vf->canvas0Addr: 0x%08x\n", __func__, vf->width, vf->height, vf->type, vf->canvas0Addr);
 
 		dst = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
 		if (!dst) {
@@ -783,7 +780,6 @@ static int meson_vdec_open(struct file *file)
 	int ret = 0;
 	stream_port_t *port = amstream_find_port("amstream_hevc");
 	stream_buf_t *sbuf = get_buf_by_type(PTS_TYPE_HEVC);
-	printk(KERN_EMERG "[%s] ==> Enter\n", __func__);
 
 	v4l2_info(&dev->v4l2_dev, "vdec_open\n");
 	if (!port)
