@@ -1656,12 +1656,12 @@ VP9 buffer management end
 #define HEVC_CM_HEADER_LENGTH                      0x3629
 #define HEVC_CM_HEADER_OFFSET                      0x362b
 
-#define LOSLESS_COMPRESS_MODE
+//#define LOSLESS_COMPRESS_MODE
 /* DOUBLE_WRITE_MODE is enabled only when NV21 8 bit output is needed */
 /* double_write_mode: 0, no double write; 1, 1:1 ratio; 2, (1/4):(1/4) ratio
 	0x10, double write only
 */
-static u32 double_write_mode;
+static u32 double_write_mode = 1;
 
 /*#define DECOMP_HEADR_SURGENT*/
 
@@ -3877,7 +3877,7 @@ static void config_sao_hw(struct VP9Decoder_s *pbi, union param_u *params)
 	/*set them all 0 for H265_NV21 (no down-scale)*/
 	data32 &= ~(0xff << 16);
 	WRITE_VREG(HEVC_SAO_CTRL5, data32);
-	ata32 = READ_VREG(HEVCD_IPP_AXIIF_CONFIG);
+	data32 = READ_VREG(HEVCD_IPP_AXIIF_CONFIG);
 	data32 &= (~0x30);
 	/*[5:4] address_format 00:linear 01:32x32 10:64x32*/
 	data32 |= (MEM_MAP_MODE << 4);
