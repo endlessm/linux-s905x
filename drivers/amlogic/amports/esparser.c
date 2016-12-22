@@ -190,6 +190,9 @@ static irqreturn_t esparser_isr(int irq, void *dev_id)
 		WRITE_MPEG_REG(PFIFO_RD_PTR, 0);
 		WRITE_MPEG_REG(PFIFO_WR_PTR, 0);
 		search_done = 1;
+		if (search_done_cb)
+			search_done_cb(search_done_cb_data);
+
 		wake_up_interruptible(&wq);
 	}
 	return IRQ_HANDLED;
