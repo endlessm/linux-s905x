@@ -41,6 +41,9 @@
 /* This is the default encoded v4l2_buffer size */
 #define VDEC_ENCODED_BUF_SIZE   (1*1024*1024)
 
+/* Decoder workbuffer */
+#define VDEC_HW_BUF_SIZE	(32*1024*1024)
+
 static int debug;
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "debug level (0-1)");
@@ -170,6 +173,9 @@ struct vdec_ctx {
 	struct vframe_receiver_s vf_receiver;
 
 	void *buf_vaddr;
+
+	void *decoder_buf;
+	phys_addr_t decoder_buf_phys;
 
 	/* Protects concurrent access to:
 	 * eos_state and its relationship with v4l2_m2m source buf queue
@@ -855,6 +861,23 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 
 	port->vformat = ctx->ll_link->vformat;
 	port->flag |= PORT_FLAG_VFORMAT;
+
+	if (ctx->stream.type == VDEC_VP9) {
+		ctx->decoder_buf = dma_alloc_coherent(ctx->dev->v4l2_dev.dev, VDEC_HW_BUF_SIZE,
+						      &ctx->decoder_buf_phys,
+						      GFP_KERNEL);
+		if (!ctx->decoder_buf) {
+			ret = -ENOMEM;
+			goto err_free_sbuf;
+		}
+
+		vdec_set_resource(ctx->decoder_buf_phys,
+				  ctx->decoder_buf_phys + VDEC_HW_BUF_SIZE - 1,
+				  ctx->dev->v4l2_dev.dev);
+
+		vp9_set_params_cb(ctx, vp9_params_cb);
+	}
+
 	ret = video_port_init(port, sbuf);
 	if (ret)
 		goto err_free_sbuf;
@@ -866,15 +889,12 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 						       GFP_KERNEL);
 		if (!ctx->eos_tail_buf) {
 			ret = -ENOMEM;
-			goto err_free_sbuf;
+			goto err_free_vdec;
 		}
 
 		memset(ctx->eos_tail_buf, 0, EOS_TAIL_BUF_SIZE);
 		memcpy(ctx->eos_tail_buf, eos_tail_data, sizeof(eos_tail_data));
 	}
-
-	if (ctx->stream.type == VDEC_VP9)
-		vp9_set_params_cb(ctx, vp9_params_cb);
 
 	ctx->frame_width = ctx->frame_height = 0;
 	ctx->parsed_len = 0;
@@ -888,6 +908,9 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 
 	return 0;
 
+err_free_vdec:
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_HW_BUF_SIZE, ctx->decoder_buf,
+			  ctx->decoder_buf_phys);
 err_free_sbuf:
 	amstream_port_release(port);
 	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
@@ -901,6 +924,9 @@ static int vdec_src_stop_streaming(struct vb2_queue *vq)
 	ctx->src_streaming = false;
 	kthread_park(ctx->image_thread);
 	del_timer_sync(&ctx->eos_idle_timer);
+
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_HW_BUF_SIZE, ctx->decoder_buf,
+			  ctx->decoder_buf_phys);
 
 	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
 		          ctx->stream.sbuf->buf_start);
