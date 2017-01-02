@@ -200,6 +200,7 @@ static u32 video_signal_type;
 static u32 pts_unstable;
 static u32 on_no_keyframe_skiped;
 
+static DEFINE_DMA_ATTRS(dma_attrs_contig_nokmap);
 
 #define PROB_SIZE    (496 * 2 * 4)
 #define PROB_BUF_SIZE    (0x5000)
@@ -231,6 +232,7 @@ struct BUF_s {
 	unsigned long alloc_addr;
 	unsigned long start_adr;
 	unsigned int size;
+	void *cookie;
 
 	unsigned int free_start_adr;
 } /*BUF_t */;
@@ -1088,6 +1090,7 @@ struct VP9Decoder_s {
 
 	unsigned long pre_last_frame_alloc_addr;
 	unsigned long pre_last_frame_alloc_size;
+	void *pre_last_frame_alloc_cookie;
 	u32 predisp_addr;
 	u32 predisp_size;
 
@@ -3185,12 +3188,14 @@ static void uninit_buf_list(struct VP9Decoder_s *pbi)
 			(pbi->pre_last_frame_alloc_addr
 				+ pbi->pre_last_frame_alloc_size)
 			) {
-			codec_mm_free_for_dma(MEM_NAME,
-				pbi->pre_last_frame_alloc_addr);
+			dma_free_attrs(amports_get_dma_device(), pbi->pre_last_frame_alloc_size,
+				       pbi->pre_last_frame_alloc_cookie, pbi->pre_last_frame_alloc_addr,
+				       &dma_attrs_contig_nokmap);
 			pr_info("release pre_last_frame cma buffer %ld\n",
 				pbi->pre_last_frame_alloc_addr);
 			pbi->pre_last_frame_alloc_addr = 0;
 			pbi->pre_last_frame_alloc_size = 0;
+			pbi->pre_last_frame_alloc_cookie = 0;
 		}
 	}
 
@@ -3212,18 +3217,19 @@ static void uninit_buf_list(struct VP9Decoder_s *pbi)
 						pbi->m_BUF[i].alloc_addr;
 						pbi->pre_last_frame_alloc_size
 						    = pbi->m_BUF[i].size;
+						pbi->pre_last_frame_alloc_cookie
+						    = pbi->m_BUF[i].cookie;
 						pbi->m_BUF[i].alloc_addr = 0;
 						pbi->m_BUF[i].
 						cma_page_count = 0;
 						continue;
 					}
 				}
-
 				pr_info("release cma buffer[%d] (%d %ld)\n", i,
 					pbi->m_BUF[i].cma_page_count,
 					pbi->m_BUF[i].alloc_addr);
-				codec_mm_free_for_dma(MEM_NAME,
-					pbi->m_BUF[i].alloc_addr);
+				dma_free_attrs(amports_get_dma_device(), pbi->m_BUF[i].size, pbi->m_BUF[i].cookie,
+					       pbi->m_BUF[i].alloc_addr, &dma_attrs_contig_nokmap);
 				pbi->m_BUF[i].alloc_addr = 0;
 				pbi->m_BUF[i].cma_page_count = 0;
 
@@ -3329,9 +3335,11 @@ static void init_buf_list(struct VP9Decoder_s *pbi)
 						pbi->m_BUF[i].alloc_addr;
 					pbi->pre_last_frame_alloc_size =
 						pbi->m_BUF[i].size;
+					pbi->pre_last_frame_alloc_cookie =
+						pbi->m_BUF[i].cookie;
 				} else {
-					codec_mm_free_for_dma(MEM_NAME,
-						pbi->m_BUF[i].alloc_addr);
+					dma_free_attrs(amports_get_dma_device(), pbi->m_BUF[i].size, pbi->m_BUF[i].cookie,
+						       pbi->m_BUF[i].alloc_addr, &dma_attrs_contig_nokmap);
 					pr_info("release cma buffer[%d] (%d %ld)\n",
 					i, pbi->m_BUF[i].cma_page_count,
 						pbi->m_BUF[i].alloc_addr);
@@ -3340,29 +3348,11 @@ static void init_buf_list(struct VP9Decoder_s *pbi)
 				pbi->m_BUF[i].cma_page_count = 0;
 			}
 			if (pbi->m_BUF[i].alloc_addr == 0) {
-				if (!codec_mm_enough_for_size(buf_size)) {
-					/*
-					not enough mem for buffer.
-					*/
-					pr_info("not enought buffer for [%d],%d\n",
-						i, buf_size);
-					pbi->m_BUF[i].cma_page_count = 0;
-					if (i <= 8) {
-						/*if alloced (i+1)>=9
-						don't send errors.*/
-						/*pbi->fatal_error |=
-						DECODER_FATAL_ERROR_NO_MEM;*/
-					}
-					break;
-				}
 				pbi->m_BUF[i].cma_page_count =
 					PAGE_ALIGN(buf_size) / PAGE_SIZE;
-				pbi->m_BUF[i].alloc_addr =
-				    codec_mm_alloc_for_dma(
-					MEM_NAME, pbi->m_BUF[i].cma_page_count,
-					4 + PAGE_SHIFT,
-					CODEC_MM_FLAGS_FOR_VDECODER);
-				if (pbi->m_BUF[i].alloc_addr == 0) {
+				pbi->m_BUF[i].cookie = dma_alloc_attrs(amports_get_dma_device(), buf_size,
+						(dma_addr_t *) &pbi->m_BUF[i].alloc_addr, GFP_KERNEL, &dma_attrs_contig_nokmap);
+				if (pbi->m_BUF[i].alloc_addr == 0 || !pbi->m_BUF[i].cookie) {
 					pr_info("alloc cma buffer[%d] fail\n",
 					i);
 					pbi->m_BUF[i].cma_page_count = 0;
@@ -4579,6 +4569,9 @@ static int vp9_local_init(struct VP9Decoder_s *pbi)
 	struct BuffInfo_s *cur_buf_info = NULL;
 	memset(&pbi->param, 0, sizeof(union param_u));
 
+	dma_set_attr(DMA_ATTR_FORCE_CONTIGUOUS, &dma_attrs_contig_nokmap);
+	dma_set_attr(DMA_ATTR_NO_KERNEL_MAPPING, &dma_attrs_contig_nokmap);
+
 #ifdef SUPPORT_4K2K
 	cur_buf_info = &amvvp9_workbuff_spec[1];/* 4k2k work space */
 #else
@@ -5748,18 +5741,21 @@ static int amvdec_vp9_probe(struct platform_device *pdev)
 	int i;
 	u32 predisp_addr;
 	unsigned long pre_last_frame_alloc_addr, pre_last_frame_alloc_size;
+	void *pre_last_frame_alloc_cookie;
 	struct BUF_s BUF[MAX_BUF_NUM];
 	struct VP9Decoder_s *pbi = &gHevc;
 	mutex_lock(&vvp9_mutex);
 	predisp_addr = pbi->predisp_addr;
 	pre_last_frame_alloc_addr = pbi->pre_last_frame_alloc_addr;
 	pre_last_frame_alloc_size = pbi->pre_last_frame_alloc_size;
+	pre_last_frame_alloc_cookie = pbi->pre_last_frame_alloc_cookie;
 	memcpy(&BUF[0], &pbi->m_BUF[0], sizeof(struct BUF_s) * MAX_BUF_NUM);
 	memset(pbi, 0, sizeof(VP9Decoder));
 	memcpy(&pbi->m_BUF[0], &BUF[0], sizeof(struct BUF_s) * MAX_BUF_NUM);
 	pbi->predisp_addr = predisp_addr;
 	pbi->pre_last_frame_alloc_addr = pre_last_frame_alloc_addr;
 	pbi->pre_last_frame_alloc_size = pre_last_frame_alloc_size;
+	pbi->pre_last_frame_alloc_cookie = pre_last_frame_alloc_cookie;
 
 	pbi->init_flag = 0;
 	pbi->fatal_error = 0;
