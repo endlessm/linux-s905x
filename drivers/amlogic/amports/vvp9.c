@@ -140,7 +140,7 @@ unsigned short parser_cmd[PARSER_CMD_NUMBER] = {
 
 #define SUPPORT_10BIT
 /* #define ERROR_HANDLE_DEBUG */
-#if 0 /* MESON_CPU_TYPE == MESON_CPU_TYPE_MESON8B*/
+#if 1 /* MESON_CPU_TYPE == MESON_CPU_TYPE_MESON8B*/
 #undef SUPPORT_4K2K
 #else
 #define SUPPORT_4K2K
