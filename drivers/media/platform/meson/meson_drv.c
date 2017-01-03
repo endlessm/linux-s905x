@@ -143,16 +143,19 @@ static struct vdec_ll_link {
 	const char *port_name;
 	int sbuf_type;
 	int vformat;
+	unsigned int vififo_low_level;
 } ll_link[] = {
 	{
 		.port_name = "amstream_vbuf",
 		.sbuf_type = PTS_TYPE_VIDEO,
 		.vformat = VFORMAT_H264,
+		.vififo_low_level = 256,
 	},
 	{
 		.port_name = "amstream_hevc",
 		.sbuf_type = PTS_TYPE_HEVC,
 		.vformat = VFORMAT_VP9,
+		.vififo_low_level = 512,
 	},
 };
 
@@ -290,24 +293,37 @@ static void mark_all_dst_done(struct vdec_ctx *ctx)
  *
  * The caller should hold data_lock.
  */
-static void send_eos_tail(struct vdec_ctx *ctx)
-{
-	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,
-		 "sending EOS tail to esparser\n");
-	ctx->eos_state = EOS_TAIL_SENT;
-	ctx->esparser_busy = true;
-	esparser_start_search(PARSER_VIDEO, ctx->eos_tail_buf_phys,
-			      EOS_TAIL_BUF_SIZE);
-}
 
 static void run_eos_idle_timer(struct vdec_ctx *ctx)
 {
 	mod_timer(&ctx->eos_idle_timer, jiffies + (HZ / 10));
 }
 
+static void send_eos_tail(struct vdec_ctx *ctx)
+{
+	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,
+		 "sending EOS tail to esparser\n");
+	ctx->eos_state = EOS_TAIL_SENT;
+	ctx->esparser_busy = true;
+
+	if (ctx->stream.type == VDEC_H264)
+		esparser_start_search(PARSER_VIDEO, ctx->eos_tail_buf_phys,
+				      EOS_TAIL_BUF_SIZE);
+
+	/*
+	 * No need for EOS tail when decoding VP9. We just run the timer to check for
+	 * the EOS condition
+	 */
+	if (ctx->stream.type == VDEC_VP9) {
+		ctx->eos_state = EOS_WAIT_IDLE;
+		run_eos_idle_timer(ctx);
+	}
+}
+
 static void eos_check_idle(unsigned long arg)
 {
 	struct vdec_ctx *ctx = (struct vdec_ctx *) arg;
+	unsigned int vififo_level = ctx->ll_link->vififo_low_level;
 
 	if (!ctx->src_streaming)
 		return;
@@ -315,13 +331,25 @@ static void eos_check_idle(unsigned long arg)
 	/* The VIFIFO level does not reach 0 at the end of playback, it
 	 * always seems to have a small amount of data there which does not
 	 * get flushed. So we use a low threshold to detect VIFIFO empty.
-	 * FIXME: experiment and check that 256 bytes is the upper limit here
+	 * FIXME: experiment and check that 256 / 512 bytes is the upper limit here
 	 * before the data is actually flushed. */
-	if (vf_peek(RECEIVER_NAME) ||
-	    vh264_vififo_level() > 256 ||
-	    vh264_output_is_starved()) {
-		run_eos_idle_timer(ctx);
-		return;
+
+	if (ctx->stream.type == VDEC_H264) {
+		if (vf_peek(RECEIVER_NAME) ||
+		    vh264_vififo_level() > vififo_level ||
+		    vh264_output_is_starved()) {
+			run_eos_idle_timer(ctx);
+			return;
+		}
+	}
+
+	if (ctx->stream.type == VDEC_VP9) {
+		if (vf_peek(RECEIVER_NAME) ||
+		    vp9_vififo_level() > vififo_level ||
+		    vp9_output_is_starved(RECEIVER_NAME, vififo_level)) {
+			run_eos_idle_timer(ctx);
+			return;
+		}
 	}
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "EOS detected\n");
