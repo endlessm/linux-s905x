@@ -284,3 +284,13 @@ void vf_put(struct vframe_s *vf, const char *receiver)
 	vfp->ops->put(vf, vfp->op_arg);
 }
 EXPORT_SYMBOL(vf_put);
+
+int vf_status(struct vframe_states *vf_state, const char *receiver)
+{
+	struct vframe_provider_s *vfp;
+	vfp = vf_get_provider(receiver);
+	if (!(vfp && vfp->ops && vfp->ops->vf_states))
+		return -1;
+	return vfp->ops->vf_states(vf_state, vfp->op_arg);
+}
+EXPORT_SYMBOL(vf_status);

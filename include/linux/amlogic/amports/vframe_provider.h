@@ -74,6 +74,7 @@ struct vframe_provider_s *vf_get_provider(const char *name);
 struct vframe_s *vf_peek(const char *receiver);
 struct vframe_s *vf_get(const char *receiver);
 void vf_put(struct vframe_s *vf, const char *receiver);
+int vf_status(struct vframe_states *vf_state, const char *receiver);
 
 unsigned int get_post_canvas(void);
 unsigned int vf_keep_current(void);
