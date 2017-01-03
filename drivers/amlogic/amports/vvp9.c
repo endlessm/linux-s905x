@@ -5334,6 +5334,19 @@ if (debug & VP9_DEBUG_DBG_LF_PRINT) {
 	return IRQ_HANDLED;
 }
 
+unsigned int vp9_vififo_level(void)
+{
+	return READ_VREG(HEVC_STREAM_LEVEL);
+}
+
+bool vp9_output_is_starved(const char *receiver, unsigned int low_level)
+{
+	struct vframe_states vf_state;
+
+	vf_status(&vf_state, receiver);
+	return (!vf_state.buf_free_num && !vf_state.buf_avail_num && vp9_vififo_level() > low_level);
+}
+
 static void vvp9_put_timer_func(unsigned long arg)
 {
 	struct VP9Decoder_s *pbi = (struct VP9Decoder_s *)arg;
