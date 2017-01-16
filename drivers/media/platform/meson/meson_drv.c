@@ -44,6 +44,10 @@
 /* Decoder workbuffer */
 #define VDEC_HW_BUF_SIZE	(32*1024*1024)
 
+/* VP9 header */
+#define VP9_HEADER_SIZE		16
+#define VP9_FETCHBUF_SIZE	(512*1024)
+
 static int debug;
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "debug level (0-1)");
@@ -179,6 +183,9 @@ struct vdec_ctx {
 
 	void *decoder_buf;
 	phys_addr_t decoder_buf_phys;
+
+	void *fetchbuf;
+	phys_addr_t fetchbuf_phys;
 
 	/* Protects concurrent access to:
 	 * eos_state and its relationship with v4l2_m2m source buf queue
@@ -357,6 +364,100 @@ static void eos_check_idle(unsigned long arg)
 	mark_all_dst_done(ctx);
 }
 
+static int vp9_add_header(struct vb2_buffer *buf, struct vdec_ctx *ctx)
+{
+	uint8_t *dp;
+	uint8_t marker;
+	int dsize;
+	int num_frames, cur_frame;
+	int cur_mag, mag, mag_ptr;
+	int frame_size[8], tot_frame_size[8];
+	int total_datasize = 0;
+	int new_frame_size;
+	unsigned char *old_header = NULL;
+
+	dp = (uint8_t *) vb2_plane_vaddr(buf, 0);
+	dsize = vb2_get_plane_payload(buf, 0);
+
+	marker = dp[dsize - 1];
+	if ((marker & 0xe0) == 0xc0) {
+		num_frames = (marker & 0x7) + 1;
+		mag = ((marker >> 3) & 0x3) + 1;
+		mag_ptr = dsize - mag * num_frames - 2;
+		if (dp[mag_ptr] != marker) {
+			v4l2_err(&ctx->dev->v4l2_dev, "Wrong marker.\n");
+			return 0;
+		}
+		mag_ptr++;
+		for (cur_frame = 0; cur_frame < num_frames; cur_frame++) {
+			frame_size[cur_frame] = 0;
+			for (cur_mag = 0; cur_mag < mag; cur_mag++) {
+				frame_size[cur_frame] |= (dp[mag_ptr] << (cur_mag * 8));
+				mag_ptr++;
+			}
+			if (cur_frame == 0)
+				tot_frame_size[cur_frame] = frame_size[cur_frame];
+			else
+				tot_frame_size[cur_frame] = tot_frame_size[cur_frame - 1] + frame_size[cur_frame];
+			total_datasize += frame_size[cur_frame];
+		}
+	} else {
+		num_frames = 1;
+		frame_size[0] = dsize;
+		tot_frame_size[0] = dsize;
+		total_datasize = dsize;
+	}
+
+	new_frame_size = total_datasize + num_frames * VP9_HEADER_SIZE;
+	if (new_frame_size > VP9_FETCHBUF_SIZE) {
+		v4l2_err(&ctx->dev->v4l2_dev, "Not enough space in the fetchbuf. Required: %d\n", new_frame_size);
+		return 0;
+	}
+
+	memset(ctx->fetchbuf, 0, VP9_FETCHBUF_SIZE);
+	memcpy(ctx->fetchbuf, (const void __force *)dp, dsize);
+
+	for (cur_frame = num_frames - 1; cur_frame >= 0; cur_frame--) {
+		int framesize = frame_size[cur_frame];
+		int framesize_header = framesize + 4;
+		int oldframeoff = tot_frame_size[cur_frame] - framesize;
+		int outheaderoff =  oldframeoff + cur_frame * VP9_HEADER_SIZE;
+		uint8_t *fdata = ctx->fetchbuf + outheaderoff;
+		uint8_t *old_framedata = ctx->fetchbuf + oldframeoff;
+
+		memmove(fdata + VP9_HEADER_SIZE, old_framedata, framesize);
+
+		fdata[0] = (framesize_header >> 24) & 0xff;
+		fdata[1] = (framesize_header >> 16) & 0xff;
+		fdata[2] = (framesize_header >> 8) & 0xff;
+		fdata[3] = (framesize_header >> 0) & 0xff;
+		fdata[4] = ((framesize_header >> 24) & 0xff) ^0xff;
+		fdata[5] = ((framesize_header >> 16) & 0xff) ^0xff;
+		fdata[6] = ((framesize_header >> 8) & 0xff) ^0xff;
+		fdata[7] = ((framesize_header >> 0) & 0xff) ^0xff;
+		fdata[8] = 0;
+		fdata[9] = 0;
+		fdata[10] = 0;
+		fdata[11] = 1;
+		fdata[12] = 'A';
+		fdata[13] = 'M';
+		fdata[14] = 'L';
+		fdata[15] = 'V';
+
+		if (!old_header) {
+			/* nothing */
+		} else if (old_header > fdata + 16 + framesize) {
+			v4l2_err(&ctx->dev->v4l2_dev, "Data has gaps. Set to 0.\n");
+			memset(fdata + 16 + framesize, 0, (old_header - fdata + 16 + framesize));
+		} else if (old_header < fdata + 16 + framesize) {
+			v4l2_err(&ctx->dev->v4l2_dev, "Error. Data overwritten. Continuing.\n");
+		}
+		old_header = fdata;
+	}
+
+	return new_frame_size;
+}
+
 /* Try to send the next source buffer to the parser.
  * We first check that there is a source buffer available, and that the
  * parser is not already busy.
@@ -397,6 +498,13 @@ static void parse_next_buffer(struct vdec_ctx *ctx)
 
 	ctx->esparser_busy = true;
 
+	if (ctx->stream.type == VDEC_VP9) {
+		size = vp9_add_header(buf, ctx);
+		if (!size)
+			return;
+		phys_addr = ctx->fetchbuf_phys;
+	}
+
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,
 		 "parsing at pts %li.%lis offset %zu\n",
 		 buf->v4l2_buf.timestamp.tv_sec,
@@ -407,6 +515,7 @@ static void parse_next_buffer(struct vdec_ctx *ctx)
 
 	pts_checkin_offset_us64(PTS_TYPE_VIDEO, ctx->parsed_len, ts);
 	ctx->parsed_len += size;
+
 	esparser_start_search(PARSER_VIDEO, phys_addr, size);
 }
 
@@ -904,11 +1013,22 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 				  ctx->dev->v4l2_dev.dev);
 
 		vp9_set_params_cb(ctx, vp9_params_cb);
+
+		/*
+		 * Working buffer for frame data + headers
+		 */
+		ctx->fetchbuf = dma_alloc_coherent(ctx->dev->v4l2_dev.dev, VP9_FETCHBUF_SIZE,
+						   &ctx->fetchbuf_phys,
+						   GFP_KERNEL);
+		if (!ctx->fetchbuf) {
+			ret = -ENOMEM;
+			goto err_free_vdec;
+		}
 	}
 
 	ret = video_port_init(port, sbuf);
 	if (ret)
-		goto err_free_sbuf;
+		goto err_free_fetchbuf;
 
 	if (ctx->stream.type == VDEC_H264) {
 		vh264_set_params_cb(ctx, h264_params_cb);
@@ -917,7 +1037,7 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 						       GFP_KERNEL);
 		if (!ctx->eos_tail_buf) {
 			ret = -ENOMEM;
-			goto err_free_vdec;
+			goto err_free_sbuf;
 		}
 
 		memset(ctx->eos_tail_buf, 0, EOS_TAIL_BUF_SIZE);
@@ -936,6 +1056,9 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 
 	return 0;
 
+err_free_fetchbuf:
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, VP9_FETCHBUF_SIZE, ctx->fetchbuf,
+			  ctx->fetchbuf_phys);
 err_free_vdec:
 	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_HW_BUF_SIZE, ctx->decoder_buf,
 			  ctx->decoder_buf_phys);
@@ -958,6 +1081,9 @@ static int vdec_src_stop_streaming(struct vb2_queue *vq)
 
 	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
 		          ctx->stream.sbuf->buf_start);
+
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, VP9_FETCHBUF_SIZE, ctx->fetchbuf,
+			  ctx->fetchbuf_phys);
 
 	dma_free_coherent(ctx->dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE, ctx->eos_tail_buf,
 			  ctx->eos_tail_buf_phys);
