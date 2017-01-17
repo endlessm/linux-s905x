@@ -431,6 +431,32 @@ static void h264_params_cb(void *data, int status, u32 width, u32 height)
 	wake_up(&ctx->esparser_queue);
 }
 
+static void vp9_params_cb(void *data, int status, u32 width, u32 height)
+{
+	struct vdec_ctx *ctx = data;
+	const struct v4l2_event ev = {
+		.type = V4L2_EVENT_SOURCE_CHANGE,
+		.u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION,
+	};
+
+	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,
+		 "vp9_params_cb status=%d w=%d h=%d\n",
+		 status, width, height);
+
+	if (status) {
+		v4l2_err(&ctx->dev->v4l2_dev, "VP9 params error.\n");
+		return;
+	}
+
+	if ((ctx->frame_width == width) && (ctx->frame_height == height))
+		return;
+
+	ctx->frame_width = width;
+	ctx->frame_height = height;
+	v4l2_event_queue_fh(&ctx->fh, &ev);
+	wake_up(&ctx->esparser_queue);
+}
+
 /*
  * m2m operations
  */
@@ -846,6 +872,9 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 		memset(ctx->eos_tail_buf, 0, EOS_TAIL_BUF_SIZE);
 		memcpy(ctx->eos_tail_buf, eos_tail_data, sizeof(eos_tail_data));
 	}
+
+	if (ctx->stream.type == VDEC_VP9)
+		vp9_set_params_cb(ctx, vp9_params_cb);
 
 	ctx->frame_width = ctx->frame_height = 0;
 	ctx->parsed_len = 0;
