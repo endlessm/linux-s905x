@@ -1072,8 +1072,9 @@ s32 vdec_request_irq(enum vdec_irq_num num, irq_handler_t handler,
 		return -EINVAL;
 	}
 	vdec_irq[num] = res_irq;
-	ret = request_irq(vdec_irq[num], handler,
-	IRQF_SHARED, devname, dev);
+//	ret = request_irq(vdec_irq[num], handler,
+//	IRQF_SHARED, devname, dev);
+	ret = request_threaded_irq(vdec_irq[num], NULL, handler, IRQF_SHARED | IRQF_ONESHOT, devname, dev);
 	return ret;
 }
 

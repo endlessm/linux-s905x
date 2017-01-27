@@ -648,6 +648,7 @@ static int vidioc_querycap(struct file *file, void *priv,
 			   struct v4l2_capability *cap)
 {
 	struct vdec_ctx *ctx = file2ctx(file);
+	printk(KERN_EMERG "====> %s\n", __func__);
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "ioc_querycap\n");
 
 	strncpy(cap->driver, DRIVER_NAME, sizeof(cap->driver) - 1);
@@ -664,6 +665,7 @@ static int vidioc_enum_fmt_vid_cap(struct file *file, void *priv,
 {
 	struct vdec_ctx *ctx = file2ctx(file);
 	struct vdec_fmt_cap *fmt;
+	printk(KERN_EMERG "====> %s\n", __func__);
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "enum_fmt_vid_cap\n");
 
@@ -681,6 +683,7 @@ static int vidioc_enum_fmt_vid_out(struct file *file, void *priv,
 {
 	struct vdec_ctx *ctx = file2ctx(file);
 	struct vdec_fmt_out *fmt;
+	printk(KERN_EMERG "====> %s\n", __func__);
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "enum_fmt_vid_out\n");
 
@@ -698,6 +701,7 @@ static int vidioc_g_fmt_vid_out(struct file *file, void *priv,
 				struct v4l2_format *f)
 {
 	struct vdec_ctx *ctx = file2ctx(file);
+	printk(KERN_EMERG "====> %s\n", __func__);
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "g_fmt_vid_out\n");
 
 	if (ctx->stream.type == VDEC_H264)
@@ -716,6 +720,7 @@ static int vidioc_g_fmt_vid_cap(struct file *file, void *priv,
 				struct v4l2_format *f)
 {
 	struct vdec_ctx *ctx = file2ctx(file);
+	printk(KERN_EMERG "====> %s\n", __func__);
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "g_fmt_vid_cap\n");
 
@@ -756,6 +761,7 @@ static int vidioc_try_fmt_vid_cap(struct file *file, void *priv,
 				  struct v4l2_format *f)
 {
 	struct vdec_ctx *ctx = file2ctx(file);
+	printk(KERN_EMERG "====> %s\n", __func__);
 
 	v4l2_info(&ctx->dev->v4l2_dev, "ioc_try_fmt_vid_cap\n");
 
@@ -766,6 +772,7 @@ static int vidioc_try_fmt_vid_out(struct file *file, void *priv,
 				  struct v4l2_format *f)
 {
 	struct vdec_ctx *ctx = file2ctx(file);
+	printk(KERN_EMERG "====> %s\n", __func__);
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "ioc_try_fmt_vid_out\n");
 
@@ -787,6 +794,7 @@ static int vidioc_s_fmt_vid_cap(struct file *file, void *priv,
 {
 	struct vdec_ctx *ctx = file2ctx(file);
 	struct vb2_queue *vq = v4l2_m2m_get_vq(ctx->m2m_ctx, f->type);
+	printk(KERN_EMERG "====> %s\n", __func__);
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,
 		 "ioc_s_fmt_vid_cap type=%d\n", f->type);
@@ -807,6 +815,7 @@ static int vidioc_s_fmt_vid_out(struct file *file, void *priv,
 {
 	struct vdec_ctx *ctx = file2ctx(file);
 	int ret;
+	printk(KERN_EMERG "====> %s\n", __func__);
 
 	ret = vidioc_try_fmt_vid_out (file, priv, f);
 
@@ -879,6 +888,7 @@ static int vidioc_streamon(struct file *file, void *priv,
 			   enum v4l2_buf_type type)
 {
 	struct vdec_ctx *ctx = file2ctx(file);
+	printk(KERN_EMERG "====> %s\n", __func__);
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "streamon type=%d\n", type);
 
 	return v4l2_m2m_streamon(file, ctx->m2m_ctx, type);
@@ -888,6 +898,7 @@ static int vidioc_streamoff(struct file *file, void *priv,
 			    enum v4l2_buf_type type)
 {
 	struct vdec_ctx *ctx = file2ctx(file);
+	printk(KERN_EMERG "====> %s\n", __func__);
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "streamoff type=%d\n", type);
 
 	return v4l2_m2m_streamoff(file, ctx->m2m_ctx, type);
@@ -913,6 +924,7 @@ static int vidioc_decoder_cmd(struct file *file, void *priv,
 			      struct v4l2_decoder_cmd *cmd)
 {
 	struct vdec_ctx *ctx = file2ctx(file);
+	printk(KERN_EMERG "====> %s\n", __func__);
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "decoder cmd %d\n", cmd->cmd);
 
@@ -972,6 +984,10 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 	int ret;
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "src_start_streaming\n");
+	printk(KERN_EMERG "====> %s\n", __func__);
+
+	if (ctx->src_streaming)
+		return 0;
 
 	ctx->ll_link = &ll_link[ctx->stream.type];
 	ctx->stream.port = amstream_find_port(ctx->ll_link->port_name);
@@ -1072,6 +1088,9 @@ err_free_sbuf:
 static int vdec_src_stop_streaming(struct vb2_queue *vq)
 {
 	struct vdec_ctx *ctx = vb2_get_drv_priv(vq);
+	printk(KERN_EMERG "====> %s\n", __func__);
+	if (!ctx->src_streaming)
+		return 0;
 	ctx->src_streaming = false;
 	kthread_park(ctx->image_thread);
 	del_timer_sync(&ctx->eos_idle_timer);
@@ -1100,6 +1119,7 @@ static int vdec_src_stop_streaming(struct vb2_queue *vq)
 static int vdec_dst_start_streaming(struct vb2_queue *vq, unsigned int count)
 {
 	struct vdec_ctx *ctx = vb2_get_drv_priv(vq);
+	printk(KERN_EMERG "====> %s\n", __func__);
 	ctx->dst_streaming = true;
 	return 0;
 }
@@ -1107,6 +1127,7 @@ static int vdec_dst_start_streaming(struct vb2_queue *vq, unsigned int count)
 static int vdec_dst_stop_streaming(struct vb2_queue *vq)
 {
 	struct vdec_ctx *ctx = vb2_get_drv_priv(vq);
+	printk(KERN_EMERG "====> %s\n", __func__);
 	ctx->dst_streaming = false;
 	mark_all_dst_done(ctx);
 	return 0;
@@ -1119,6 +1140,7 @@ static int vdec_src_queue_setup(struct vb2_queue *vq,
 				unsigned int sizes[], void *alloc_ctxs[])
 {
 	struct vdec_ctx *ctx = vb2_get_drv_priv(vq);
+	printk(KERN_EMERG "====> %s\n", __func__);
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "queue_setup_output\n");
 
@@ -1142,6 +1164,7 @@ static int vdec_dst_queue_setup(struct vb2_queue *vq,
 {
 	struct vdec_ctx *ctx = vb2_get_drv_priv(vq);
 	struct buffer_size_info buf_info;
+	printk(KERN_EMERG "====> %s\n", __func__);
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "queue_setup_capture\n");
 
