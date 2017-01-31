@@ -1172,14 +1172,14 @@ static int meson_ioctl_create_with_ump(struct drm_device *dev, void *data,
 	/* We do not need kernel virtual addresses */
 	dma_set_attr(DMA_ATTR_NO_KERNEL_MAPPING, &dma_attrs);
 
-	if (args->flags & DRM_MESON_GEM_CREATE_WITH_UMP_FLAG_SCANOUT) {
+//	if (args->flags & DRM_MESON_GEM_CREATE_WITH_UMP_FLAG_SCANOUT) {
 		/* No caching for scanout buffers */
 		dma_set_attr(DMA_ATTR_WRITE_COMBINE, &dma_attrs);
-	} else {
-		/* Other buffers are textures and caches can be enabled. */
-		WARN_ON(!(args->flags & DRM_MESON_GEM_CREATE_WITH_UMP_FLAG_TEXTURE));
-		dma_set_attr(DMA_ATTR_NON_CONSISTENT, &dma_attrs);
-	}
+//	} else {
+//		/* Other buffers are textures and caches can be enabled. */
+//		WARN_ON(!(args->flags & DRM_MESON_GEM_CREATE_WITH_UMP_FLAG_TEXTURE));
+//		dma_set_attr(DMA_ATTR_NON_CONSISTENT, &dma_attrs);
+//	}
 
 	cma_obj = drm_gem_cma_create_with_handle(file, dev, size, &args->handle, &dma_attrs);
 	if (IS_ERR(cma_obj))
