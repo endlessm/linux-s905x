@@ -331,6 +331,7 @@ static void eos_check_idle(unsigned long arg)
 {
 	struct vdec_ctx *ctx = (struct vdec_ctx *) arg;
 	unsigned int vififo_level = ctx->ll_link->vififo_low_level;
+	printk(KERN_EMERG "====> %s\n", __func__);
 
 	if (!ctx->src_streaming)
 		return;
@@ -359,6 +360,7 @@ static void eos_check_idle(unsigned long arg)
 		}
 	}
 
+	printk(KERN_EMERG "====> %s EEEEXXIIIITTT\n", __func__);
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "EOS detected\n");
 	ctx->eos_state = EOS_DETECTED;
 	mark_all_dst_done(ctx);
@@ -657,6 +659,7 @@ static int vidioc_querycap(struct file *file, void *priv,
 			"platform:%s", DRIVER_NAME);
 	cap->device_caps = V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_STREAMING;
 	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS;
+	printk(KERN_EMERG "====> %s EEEEXXIIIITTT\n", __func__);
 	return 0;
 }
 
@@ -675,6 +678,7 @@ static int vidioc_enum_fmt_vid_cap(struct file *file, void *priv,
 	fmt = &formats_cap[f->index];
 	strlcpy(f->description, fmt->name, sizeof(f->description));
 	f->pixelformat = fmt->pixelformat;
+	printk(KERN_EMERG "====> %s EEEEXXIIIITTT\n", __func__);
 	return 0;
 }
 
@@ -693,6 +697,7 @@ static int vidioc_enum_fmt_vid_out(struct file *file, void *priv,
 	fmt = &formats_out[f->index];
 	strlcpy(f->description, fmt->name, sizeof(f->description));
 	f->pixelformat = fmt->pixelformat;
+	printk(KERN_EMERG "====> %s EEEEXXIIIITTT\n", __func__);
 
 	return 0;
 }
@@ -731,6 +736,7 @@ static int vidioc_g_fmt_vid_cap(struct file *file, void *priv,
 		return -EINVAL;
 
 	configure_v4l2_plane_fmt(ctx, &f->fmt.pix_mp);
+	printk(KERN_EMERG "====> %s EEEEXXIIIITTT\n", __func__);
 	return 0;
 }
 
@@ -739,6 +745,7 @@ static int try_fmt_vid_cap(struct vdec_ctx *ctx, struct v4l2_format *f,
 {
 	struct vdec_fmt_cap *fmt = &formats_cap[0];
 	int i;
+	printk(KERN_EMERG "====> %s\n", __func__);
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "ioc_try_fmt_vid_cap\n");
 
@@ -754,6 +761,7 @@ static int try_fmt_vid_cap(struct vdec_ctx *ctx, struct v4l2_format *f,
 		ctx->fmt = fmt;
 
 	configure_v4l2_plane_fmt(ctx, &f->fmt.pix_mp);
+	printk(KERN_EMERG "====> %s EEEEXXIIIITTT\n", __func__);
 	return 0;
 }
 
@@ -786,6 +794,7 @@ static int vidioc_try_fmt_vid_out(struct file *file, void *priv,
         if (f->fmt.pix_mp.plane_fmt[0].sizeimage == 0)
 		f->fmt.pix_mp.plane_fmt[0].sizeimage = VDEC_ENCODED_BUF_SIZE;
 
+	printk(KERN_EMERG "====> %s EEEEXXIIIITTT\n", __func__);
 	return 0;
 }
 
@@ -807,6 +816,7 @@ static int vidioc_s_fmt_vid_cap(struct file *file, void *priv,
 		return -EBUSY;
 	}
 
+	printk(KERN_EMERG "====> %s EEEEXXIIIITTT\n", __func__);
 	return try_fmt_vid_cap(ctx, f, true);
 }
 
@@ -829,6 +839,7 @@ static int vidioc_s_fmt_vid_out(struct file *file, void *priv,
 			return -EINVAL;
 	}
 
+	printk(KERN_EMERG "====> %s EEEEXXIIIITTT\n", __func__);
         return ret;
 }
 
@@ -888,20 +899,26 @@ static int vidioc_streamon(struct file *file, void *priv,
 			   enum v4l2_buf_type type)
 {
 	struct vdec_ctx *ctx = file2ctx(file);
+	int a;
 	printk(KERN_EMERG "====> %s\n", __func__);
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "streamon type=%d\n", type);
 
-	return v4l2_m2m_streamon(file, ctx->m2m_ctx, type);
+	a = v4l2_m2m_streamon(file, ctx->m2m_ctx, type);
+	printk(KERN_EMERG "====> %s EEEEXIIIIITTTT\n", __func__);
+	return a;
 }
 
 static int vidioc_streamoff(struct file *file, void *priv,
 			    enum v4l2_buf_type type)
 {
 	struct vdec_ctx *ctx = file2ctx(file);
+	int a;
 	printk(KERN_EMERG "====> %s\n", __func__);
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "streamoff type=%d\n", type);
 
-	return v4l2_m2m_streamoff(file, ctx->m2m_ctx, type);
+	a = v4l2_m2m_streamoff(file, ctx->m2m_ctx, type);
+	printk(KERN_EMERG "====> %s EEEEXIIIIITTT\n", __func__);
+	return a;
 }
 
 static int vidioc_subscribe_event(struct v4l2_fh *fh,
@@ -986,25 +1003,35 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "src_start_streaming\n");
 	printk(KERN_EMERG "====> %s\n", __func__);
 
-	if (ctx->src_streaming)
+	if (ctx->src_streaming) {
+		printk(KERN_EMERG "====> %s EEEXXXXIIIITTT a\n", __func__);
 		return 0;
+	}
 
+	printk(KERN_EMERG "====> %s 1\n", __func__);
 	ctx->ll_link = &ll_link[ctx->stream.type];
 	ctx->stream.port = amstream_find_port(ctx->ll_link->port_name);
 	ctx->stream.sbuf = get_buf_by_type(ctx->ll_link->sbuf_type);
 
-	if (!ctx->stream.port || !ctx->stream.sbuf)
+	printk(KERN_EMERG "====> %s 2\n", __func__);
+	if (!ctx->stream.port || !ctx->stream.sbuf) {
+		printk(KERN_EMERG "====> %s EEEXXXXIIIITTT b\n", __func__);
 		return -ENOENT;
+	}
 
 	port = ctx->stream.port;
 	sbuf = ctx->stream.sbuf;
 
+	printk(KERN_EMERG "====> %s 3\n", __func__);
 	ctx->buf_vaddr = dma_alloc_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE,
 					    (dma_addr_t *) &sbuf->buf_start, GFP_KERNEL);
 
-	if (!ctx->buf_vaddr)
+	if (!ctx->buf_vaddr) {
+		printk(KERN_EMERG "====> %s EEEXXXXIIIITTT c\n", __func__);
 		return -ENOMEM;
+	}
 
+	printk(KERN_EMERG "====> %s 4\n", __func__);
 	sbuf->buf_size = sbuf->default_buf_size = VDEC_ST_FIFO_SIZE;
 	sbuf->flag = BUF_FLAG_IOMEM;
 
@@ -1015,15 +1042,18 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 	port->vformat = ctx->ll_link->vformat;
 	port->flag |= PORT_FLAG_VFORMAT;
 
+	printk(KERN_EMERG "====> %s 5\n", __func__);
 	if (ctx->stream.type == VDEC_VP9) {
 		ctx->decoder_buf = dma_alloc_coherent(ctx->dev->v4l2_dev.dev, VDEC_HW_BUF_SIZE,
 						      &ctx->decoder_buf_phys,
 						      GFP_KERNEL);
 		if (!ctx->decoder_buf) {
+			printk(KERN_EMERG "====> %s EEEXXXXIIIITTT d\n", __func__);
 			ret = -ENOMEM;
 			goto err_free_sbuf;
 		}
 
+		printk(KERN_EMERG "====> %s 6\n", __func__);
 		vdec_set_resource(ctx->decoder_buf_phys,
 				  ctx->decoder_buf_phys + VDEC_HW_BUF_SIZE - 1,
 				  ctx->dev->v4l2_dev.dev);
@@ -1033,25 +1063,30 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 		/*
 		 * Working buffer for frame data + headers
 		 */
+		printk(KERN_EMERG "====> %s 7\n", __func__);
 		ctx->fetchbuf = dma_alloc_coherent(ctx->dev->v4l2_dev.dev, VP9_FETCHBUF_SIZE,
 						   &ctx->fetchbuf_phys,
 						   GFP_KERNEL);
 		if (!ctx->fetchbuf) {
+			printk(KERN_EMERG "====> %s EEEXXXXIIIITTT e\n", __func__);
 			ret = -ENOMEM;
 			goto err_free_vdec;
 		}
 	}
 
+	printk(KERN_EMERG "====> %s 8\n", __func__);
 	ret = video_port_init(port, sbuf);
 	if (ret)
 		goto err_free_fetchbuf;
 
+	printk(KERN_EMERG "====> %s 9\n", __func__);
 	if (ctx->stream.type == VDEC_H264) {
 		vh264_set_params_cb(ctx, h264_params_cb);
 		ctx->eos_tail_buf = dma_alloc_coherent(ctx->dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE,
 						       &ctx->eos_tail_buf_phys,
 						       GFP_KERNEL);
 		if (!ctx->eos_tail_buf) {
+			printk(KERN_EMERG "====> %s EEEXXXXIIIITTT f\n", __func__);
 			ret = -ENOMEM;
 			goto err_free_sbuf;
 		}
@@ -1060,6 +1095,7 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 		memcpy(ctx->eos_tail_buf, eos_tail_data, sizeof(eos_tail_data));
 	}
 
+	printk(KERN_EMERG "====> %s 10\n", __func__);
 	ctx->frame_width = ctx->frame_height = 0;
 	ctx->parsed_len = 0;
 	kthread_unpark(ctx->image_thread);
@@ -1082,6 +1118,7 @@ err_free_sbuf:
 	amstream_port_release(port);
 	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
 			  sbuf->buf_start);
+	printk(KERN_EMERG "====> %s EEEXXXXIIIITTT natural\n", __func__);
 	return ret;
 }
 
@@ -1113,6 +1150,7 @@ static int vdec_src_stop_streaming(struct vb2_queue *vq)
 	ctx->esparser_busy = false;
 	ctx->eos_state = EOS_NONE;
 
+	printk(KERN_EMERG "====> %s EEEEXIIIIITTTT\n", __func__);
 	return 0;
 }
 
@@ -1130,6 +1168,7 @@ static int vdec_dst_stop_streaming(struct vb2_queue *vq)
 	printk(KERN_EMERG "====> %s\n", __func__);
 	ctx->dst_streaming = false;
 	mark_all_dst_done(ctx);
+	printk(KERN_EMERG "====> %s EEEEXIIIIITTTT\n", __func__);
 	return 0;
 }
 
