@@ -887,7 +887,9 @@ static int meson_load(struct drm_device *dev, unsigned long flags)
 
 	if (enabled_connectors == 0)
 		/* Default: all enabled, CVBS mode selected via switch */
-		enabled_connectors = MESON_CONNECTORS_HDMI;
+		enabled_connectors = MESON_CONNECTORS_HDMI |
+				     MESON_CONNECTORS_CVBS_NTSC |
+				     MESON_CONNECTORS_CVBS_PAL;
 
 	meson_hdmi_connector_create(dev, !!(enabled_connectors & MESON_CONNECTORS_HDMI));
 #if 0
