@@ -208,10 +208,12 @@ static void get_underscan_border(struct drm_plane_state *state,
 
 	/* XXX: We're detecting CVBS through interlaced vs. not, but
 	 * HDMI modes can be interlaced too! */
+#if 0
 	if (state->crtc->mode.flags & DRM_MODE_FLAG_INTERLACE) {
 		hborder += CVBS_UNDERSCAN_MANGLE(state->crtc_w);
 		vborder += CVBS_UNDERSCAN_MANGLE(state->crtc_h);
 	}
+#endif
 
 	*hborder_p = hborder;
 	*vborder_p = vborder;
