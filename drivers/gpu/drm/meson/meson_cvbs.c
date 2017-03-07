@@ -147,7 +147,7 @@ static void meson_connector_destroy(struct drm_connector *connector)
 
 static bool read_hpd_gpio(void)
 {
-	return !!(hd_read_reg(P_PREG_PAD_GPIO3_I) & (1 << 19));
+	return !!(hd_read_reg(P_PREG_PAD_GPIO1_I) & (1 << 20));
 }
 
 static enum meson_cvbs_switch_state meson_cvbs_get_switch_state(void)

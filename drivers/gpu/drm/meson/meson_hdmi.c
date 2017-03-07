@@ -224,7 +224,7 @@ static irqreturn_t meson_hdmi_intr_handler(int irq, void *user_data)
 	}
 	/* check HPD status */
 	if ((data32 & (1 << 1)) && (data32 & (1 << 2))) {
-		if (hdmitx_hpd_hw_op_gxbb(HPD_READ_HPD_GPIO))
+		if (hdmitx_hpd_hw_op_gxl(HPD_READ_HPD_GPIO))
 			data32 &= ~(1 << 2);
 		else
 			data32 &= ~(1 << 1);
