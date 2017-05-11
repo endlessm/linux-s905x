@@ -1291,7 +1291,27 @@ static int queue_init(void *priv, struct vb2_queue *src_vq, struct vb2_queue *ds
 	return vb2_queue_init(dst_vq);
 }
 
-static bool image_buffers_ready(struct vdec_ctx *ctx) {
+static bool image_buffers_ready(struct vdec_ctx *ctx)
+{
+	struct buffer_size_info buf_info;
+	struct vb2_queue *vq;
+	int i;
+
+	/*
+	 * If the allocated buffers (vq->plane_sizes) do not match the size of
+	 * the decoded image (buf_info.buffer_size), leave the images in the
+	 * queue (without treating them as ready) in expectation that the
+	 * output buffers will be later reallocated.
+	 */
+
+	vq = v4l2_m2m_get_vq(ctx->m2m_ctx, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+	get_buffer_size_info(ctx->fmt, ctx->frame_width,
+			     ctx->frame_height, &buf_info);
+
+	for (i = 0; i < buf_info.num_planes; i++)
+		if (buf_info.buffer_size[i] != vq->plane_sizes[i])
+			return false;
+
 	return vf_peek(RECEIVER_NAME) &&
 		v4l2_m2m_num_dst_bufs_ready(ctx->m2m_ctx) > 0;
 }
