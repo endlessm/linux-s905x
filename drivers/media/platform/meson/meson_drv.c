@@ -36,7 +36,7 @@
 #define VDEC_MAX_BUFFERS		32
 
 /* This is used to store the encoded data */
-#define VDEC_ST_FIFO_SIZE	(3*1024*1024)
+#define VDEC_ST_FIFO_SIZE	(15*1024*1024)
 
 /* This is the default encoded v4l2_buffer size */
 #define VDEC_ENCODED_BUF_SIZE   (1*1024*1024)
