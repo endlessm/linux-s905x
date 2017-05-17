@@ -8,3 +8,7 @@ obj-$(CONFIG_AMLOGIC_MEDIA_DEINTERLACE)	+=	deinterlace/
 obj-$(CONFIG_AMLOGIC_MEDIA_VIN)		+=	vin/
 obj-$(CONFIG_AMLOGIC_MEDIA_VIDEO_PROCESSOR)	+=	video_processor/
 obj-$(CONFIG_AMLOGIC_MEDIA_ENHANCEMENT) += enhancement/
+
+obj-y	+=	frame_provider/
+obj-y	+=	frame_sink/
+obj-y	+=	stream_input/
