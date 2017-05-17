@@ -581,8 +581,6 @@ void umplock_device_terminate(void)
 
 static int __init umplock_initialize_module(void)
 {
-	PDEBUG(1, "Inserting UMP lock device driver. Compiled: %s, time: %s\n", __DATE__, __TIME__);
-
 	mutex_init(&device.item_list_lock);
 	if (umplock_device_initialize() != 0) {
 		PERROR("UMP lock device driver init failed\n");
