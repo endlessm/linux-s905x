@@ -1,0 +1,19 @@
+#
+# Amlogic Encoders
+#
+
+menu "Amlogic Encoders"
+
+config AMLOGIC_MEDIA_VENC_H264
+	tristate "CONFIG_AMLOGIC_MEDIA_VENC_H264"
+	default m
+	help
+		CONFIG_AMLOGIC_MEDIA_VENC_H264
+
+config AMLOGIC_MEDIA_VENC_H265
+	tristate "CONFIG_AMLOGIC_MEDIA_VENC_H265"
+	default m
+	help
+		CONFIG_AMLOGIC_MEDIA_VENC_H265
+
+endmenu
