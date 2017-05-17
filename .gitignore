@@ -113,3 +113,6 @@ all.config
 
 # Kdevelop4
 *.kdev4
+
+# mali rubbish
+drivers/amlogic/gpu/mali/__malidrv_build_info.c
