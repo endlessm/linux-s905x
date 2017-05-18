@@ -1,0 +1,5 @@
+config AMLOGIC_WIFI
+	bool "WiFi support"
+	default n
+	help
+		select y to support wifi

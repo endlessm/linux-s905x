@@ -13405,3 +13405,488 @@ T:	git git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
 S:	Buried alive in reporters
 F:	*
 F:	*/
+
+AMLOGIC Pinmux
+M: Jianxin Pan <jianxin.pan@amlogic.com>
+F: drivers/amlogic/pinctrl/*
+
+AMLOGIC CLOCKSOURCE DRIVER
+M:	Yun Cai <yun.cai@amlogic.com>
+F:	drivers/amlogic/clocksource/
+
+AMLOGIC CPU INFORMATION DRIVER
+M:      Yun Cai <yun.cai@amlogic.com>
+F:      drivers/amlogic/cpu_info/
+F:	drivers/amlogic/cpu_version/
+F:	drivers/amlogic/cpu_version/meson32_cpu.c
+
+AMLOGIC MAILBOX DRIVER
+M:      Yun Cai <yun.cai@amlogic.com>
+F:      drivers/amlogic/mailbox/
+
+AMLOGIC REGISTER DEBUG DRIVER
+M:      Yun Cai <yun.cai@amlogic.com>
+F:	drivers/amlogic/reg_access/
+
+AMLOGIC SECURE MONITOR DRIVER
+M:      Yun Cai <yun.cai@amlogic.com>
+F:      drivers/amlogic/secmon/
+
+AMLOGIC CLOCK TREE DRIVER
+M:      Yun Cai <yun.cai@amlogic.com>
+F:	drivers/amlogic/clk/
+F:	Documentation/devicetree/bindings/clock/amlogic,meson-clkc.txt
+F:	Documentation/devicetree/bindings/reset/amlogic,meson-reset.txt
+F:	include/dt-bindings/clock/amlogic,gxl-clkc.h
+F:	include/dt-bindings/reset/amlogic,gxl-reset.h
+
+AMLOGIC meson64_xxx_defconfigs
+M:	Jianxin Pan <jianxin.pan@amlogic.com>
+F:	scripts/amlogic/configs/
+
+AMLOGIC CRYPTO DMA BLKMV
+M:	Matthew Shyu <matthew.shyu@amlogic.com>
+F:	drivers/amlogic/crypto/*
+
+AMLOGIC saradc
+M:	Xingyu Chen <xingyu.chen@amlogic.com>
+F:	drivers/amlogic/input/saradc/*
+
+AMLOGIC adc_keypad
+M:	Xingyu Chen <xingyu.chen@amlogic.com>
+F:	drivers/amlogic/input/keyboard/*
+
+AMLOGIC EFUSE DRIVER
+M:	Yun Cai <yum.cai@amlogic.com>
+F:	drivers/amlogic/efuse/*
+F:	include/linux/amlogic/efuse.h
+
+AMLOGIC reboot for gx and M8b
+M:	Jianxin Pan <jianxin.pan@amlogic.com>
+F:	drivers/amlogic/reboot/*
+
+AMLOGIC driver for thermal
+M: Tao Zeng <tao.zeng@amlogic.com>
+F: drivers/amlogic/thermal/*
+
+AMLOGIC driver for cpufreq
+M: Tao Zeng <tao.zeng@amlogic.com>
+F: drivers/amlogic/cpufreq/*
+
+AMLOGIC driver for pmu
+M: Tao Zeng <tao.zeng@amlogic.com>
+F: drivers/amlogic/power/*
+
+HDMITX OUTPUT DRIVER
+M:	Zongdong Jiao <zongdong.jiao@amlogic.com>
+S:	Maintained
+F:	drivers/amlogic/media/vout/hdmitx/*
+F:	drivers/amlogic/media/vout/hdmitx/hdcp/*
+F:	include/linux/amlogic/media/vout/hdmi_tx/*
+
+AMLOGIC DWC_OTG USB
+M: Yue Wang <yue.wang@amlogic.com>
+F: drivers/amlogic/usb/*
+F: drivers/usb/phy/phy-aml-new-usb.h
+F: drivers/usb/phy/phy-aml-new-usb.c
+F: drivers/usb/phy/phy-aml-new-usb2.c
+F: drivers/usb/phy/phy-aml-new-usb3.c
+F: drivers/usb/phy/phy-aml-usb.h
+F: drivers/usb/phy/phy-aml-usb.c
+F: drivers/usb/phy/phy-aml-usb2.c
+F: drivers/usb/phy/phy-aml-usb3.c
+F: include/linux/amlogic/aml_gpio_consumer.h
+F: include/linux/amlogic/gpio-amlogic.h
+F: include/linux/amlogic/usb-gxbbtv.h
+F: include/linux/amlogic/usb-gxl.h
+F: include/linux/amlogic/usb-gxbb.h
+F: include/linux/amlogic/usbtype.h
+
+AMLOGIC scpi cpufreq
+M:  jianxin.pan <jianxin.pan@amlogic.com>
+F:  drivers/amlogic/clk/clk-scpi.c
+
+AMLOGIC driver for cec
+M: Tao Zeng <tao.zeng@amlogic.com>
+F: drivers/amlogic/cec/*
+
+AMLOGIC driver for i2c
+M: Xuhua Zhang <xuhua.zhang@amlogic.com>
+F: drivers/amlogic/i2c/aml_i2c.c
+F: drivers/amlogic/i2c/aml_i2c.h
+F: drivers/amlogic/i2c/aml_slave.c
+F: drivers/amlogic/i2c/aml_slave.h
+F: drivers/amlogic/i2c/Kconfig
+F: drivers/amlogic/i2c/Makefile
+
+AMLOGIC internal phy driver for ethernet
+M: Yizhou Jiang <yizhou.jiang@amlogic.com
+F: drivers/amlogic/ethernet/*
+
+AMLOGIC CPU hotplug for dvfs and IPA
+M: Jianxin Pan <jianxin.pan@amlogic.com>
+F: drivers/amlogic/cpu_hotplug/*
+
+AMLOGIC PWM DRIVER
+M: Jian Hu <jian.hu@amlogic.com>
+F: drivers/amlogic/pwm/*
+F: include/linux/amlogic/pwm_meson.h
+F: include/dt-bindings/pwm/meosn.h
+F: arch/arm64/boot/dts/amlogic/gxl_p212_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxm_q200_2g.dts
+
+AMLOGIC multimedia
+M:	Nanxin Qin <nanxin.qin@amlogic.com>
+F:	drivers/amlogic/media/common/arch/registers/*
+F:	drivers/amlogic/media/common/canvas/*
+F:	drivers/amlogic/media/common/codec_mm/*
+F:	drivers/amlogic/media/common/vfm/*
+F:	drivers/amlogic/media/Makefile
+F:	include/linux/amlogic/media/canvas/*
+F:	include/linux/amlogic/media/codec_mm/*
+F:	include/linux/amlogic/media/registers/*
+F:	include/linux/amlogic/media/vfm/*
+F:	include/linux/amlogic/media/utils/*
+F:	drivers/amlogic/media/Kconfig
+F:	drivers/amlogic/media/common/Kconfig
+F:	include/linux/amlogic/media/frame_sync/*
+F:	include/linux/amlogic/media/video_sink/*
+F:	drivers/amlogic/media/common/frame_sync/*
+F:	drivers/amlogic/media/common/ge2d/*
+F:	drivers/amlogic/media/common/vpu/*
+
+AMLOGIC VPU driver support
+M: Evoke Zhang <evoke.zhang@amlogic.com>
+F: drivers/amlogic/vpu/*
+F: include/linux/amlogic/vpu.h
+
+AMLOGIC driver for vout
+M: Evoke Zhang <evoke.zhang@amlogic.com>
+F: drivers/amlogic/dispaly/*
+
+AMLOGIC ION device
+M: Simon Zheng <simon.zheng@amlogic.com>
+F:	drivers/amlogic/media/common/ion_dev/*
+
+AMLOGIC multimedia osd & ge2d
+M:	Pengcheng Chen <pengcheng.chen@amlogic.com>
+F:	drivers/amlogic/media/osd/*
+F:	drivers/amlogic/media/osd_ext/*
+F:	drivers/amlogic/media/logo/*
+F:	drivers/amlogic/media/common/ge2d/*
+F:  include/linux/amlogic/media/ge2d/*
+F:  arch/arm64/configs/meson64_defconfig
+F:  drivers/amlogic/media/Kconfig
+F:  drivers/amlogic/media/Makefile
+F:  arch/arm64/boot/dts/amlogic/gxl_p212_1g.dts
+F:  arch/arm64/boot/dts/amlogic/gxl_p212_2g.dts
+F:  arch/arm64/boot/dts/amlogic/gxm_q200_2g.dts
+F:  drivers/amlogic/clk/clk_media.c
+F:  include/linux/amlogic/media/vout/vout_notify.h
+
+AMLOGIC remote
+M: Zan Peng <zan.peng@amlogic.com>
+F: arch/arm64/configs/meson64_defconfig
+F: drivers/amlogic/input/Makefile
+F: drivers/amlogic/input/Kconfig
+F: drivers/amlogic/input/remote/*
+F: include/dt-bindings/input/meson_rc.h
+F: include/uapi/linux/rc_common.h
+F: arch/arm64/boot/dts/amlogic/mesongxl.dtsi
+F: arch/arm64/boot/dts/amlogic/mesongxm.dtsi
+
+AMLOGIC SD/MMC DIRVER SUPPORT
+M: Nan Li <nan.li@amlogic.com>
+F: drivers/amlogic/mmc/Kconfig
+F: drivers/amlogic/mmc/Makefile
+F: drivers/amlogic/mmc/aml_sd_emmc.c
+F: drivers/amlogic/mmc/emmc_partitions.c
+F: drivers/amlogic/mmc/amlsd_of.c
+F: drivers/amlogic/mmc/amlsd.c
+F: drivers/mmc/card/block.c
+F: drivers/mmc/core/bus.c
+F: drivers/mmc/core/core.c
+F: drivers/mmc/core/mmc.c
+F: include/linux/amlogic/amlsd.h
+F: include/linux/amlogic/sd.h
+F: include/linux/mmc/emmc_partitions.h
+F: include/linux/mmc/host.h
+
+AMLOGIC MTD DRIVER
+M:	Liang Yang <liang.yang@amlogic.com>
+F:	drivers/amlogic/mtd/
+
+AMLOGIC GPU DEVICETREE
+M:	Jiyu Yang <jiyu.yang@amlogic.com>
+F:	arch/arm64/boot/dts/amlogic/mesongxtvbb-gpu-t83x.dtsi
+
+AMLOGIC VRTC DRIVER
+M:	Yun Cai <yun.cai@amlogic.com>
+F:	drivers/amlogic/vrtc/
+
+AMLOGIC DEINTERLACE, DNR, Field Detection, VOF DRIVERS
+M:  Kele Bai <kele.bai@amlogic.com>
+F:  drivers/amlogic/deinterlace/*
+
+AMLOGIC TVIN
+M: Dezhi Kong <dezhi.kong@amlogic.com>
+F: arch/arm64/boot/dts/amlogic/gxl_p212_1g.dts
+F: arch/arm64/boot/dts/amlogic/gxl_p212_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxm_q200_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxm_skt.dts
+F: arch/arm64/configs/meson64_defconfig
+F: drivers/amlogic/media/Kconfig
+F: drivers/amlogic/media/Makefile
+F: drivers/amlogic/media/vin/
+
+AMLOGIC smartcard
+M: Gong Ke <ke.gong@amlogic.com>
+F: drivers/amlogic/smartcard/c_stb_regs_define.h
+F: drivers/amlogic/smartcard/Kconfig
+F: drivers/amlogic/smartcard/Makefile
+F: drivers/amlogic/smartcard/smartcard.c
+F: drivers/amlogic/smartcard/smartcard.h
+F: drivers/amlogic/smartcard/smc_reg.h
+F: include/linux/amlogic/amsmc.h
+F: Documentation/devicetree/bindings/amlogic/amlogic-smartcard.txt
+
+AMLOGIC securitykey
+M: Yan Wang <yan.wang@amlogic.com>
+F: drivers\amlogic\securitykey\Kconfig
+F: drivers\amlogic\securitykey\Makefile
+F: drivers\amlogic\securitykey\securitykey.c
+F: include\linux\amlogic\security_key.h
+
+AMLOGIC key_manage
+M: Nan Li <nan.li@amlogic.com>
+F: arch/arm64/boot/dts/amlogic/gxl_p212_1g.dts
+F: arch/arm64/boot/dts/amlogic/gxl_p212_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxm_q200_2g.dts
+F: arch/arm64/configs/meson64_defconfig
+F: drivers/amlogic/Kconfig
+F: drivers/amlogic/Makefile
+F: drivers/amlogic/mmc/Makefile
+F: drivers/amlogic/mmc/emmc_partitions.c
+F: drivers/amlogic/key_manage/*
+F: drivers/amlogic/mmc/emmc_key.c
+F: drivers/amlogic/mmc/emmc_key.h
+F: include/linux/amlogic/key_manage.h
+
+AMLOGIC P400/P401 BSP
+M: Frank Chen <frank.chen@amlogic.com>
+F: arch/arm64/boot/dts/amlogic/gxl_p400_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxl_p401_2g.dts
+
+ANDROID LOGGER Driver
+M: Frank Chen <frank.chen@amlogic.com>
+F: drivers/staging/android/logger.c
+F: drivers/staging/android/logger.h
+
+AMLOGIC AMLVIDEO2 DRIVER
+M: Guosong Zhou <guosong.zhou@amlogic.com>
+F: arch/arm64/configs/meson64_defconfig
+F: drivers/amlogic/media/Kconfig
+F: drivers/amlogic/media/Makefile
+F: drivers/amlogic/media/common/Kconfig
+F: drivers/amlogic/media/common/Makefile
+F: drivers/amlogic/media/common/vfm/vfm.c
+F: drivers/amlogic/media/common/v4l_util/*
+F: drivers/amlogic/media/video_processor/*
+F: include/linux/amlogic/media/v4l_util/*
+
+AMLOGIC M8b
+M: Jianxin Pan <jianxin.pan@amlogic.com>
+F: arch/arm/boot/dts/amlogic>
+
+ANLOGIC AUDIO
+M: Xing Wang <xing.wang@amlogic.com>
+F: arch/arm64/boot/dts/amlogic/gxl_p212_1g.dts
+F: arch/arm64/boot/dts/amlogic/gxl_p212_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxm_q200_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxm_skt.dts
+F: arch/arm64/boot/dts/amlogic/mesongxl.dtsi
+F: arch/arm64/boot/dts/amlogic/mesongxm.dtsi
+F: arch/arm64/configs/meson64_defconfig
+F: drivers/amlogic/clk/clk-mpll.c
+F: drivers/amlogic/clk/clk_misc.c
+F: drivers/amlogic/clk/clkc.h
+F: drivers/amlogic/clk/gxl.c
+F: drivers/amlogic/media/vout/hdmitx/hdmi_tx_20/hdmi_tx_main.c
+F: drivers/amlogic/pinctrl/pinctrl_gxl.c
+F: include/dt-bindings/clock/amlogic,gxl-clkc.h
+F: include/linux/amlogic/media/sound/audin_regs.h
+F: sound/soc/Kconfig
+F: sound/soc/Makefile
+F: sound/soc/amlogic/*
+F: sound/soc/codecs/Kconfig
+F: sound/soc/codecs/Makefile
+F: sound/soc/codecs/amlogic/*
+F: drivers/amlogic/audiodsp/*
+
+AMLOGIC PPMGR DRIVER
+M: Guosong Zhou <guosong.zhou@amlogic.com>
+F: arch/arm64/boot/dts/amlogic/gxl_p212_1g.dts
+F: arch/arm64/boot/dts/amlogic/gxl_p212_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxm_q200_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxl_p400_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxm_p401_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxm_skt.dts
+F: arch/arm64/configs/meson64_defconfig
+F: drivers/amlogic/media/common/vfm/vfm.c
+F: drivers/amlogic/media/osd_ext/osd_hw.c
+F: drivers/amlogic/media/video_sink/video.c
+F: drivers/amlogic/media/video_processor/Kconfig
+F: drivers/amlogic/media/video_processor/Makefile
+F: drivers/amlogic/media/video_processor/ppmgr/*
+F: include/linux/amlogic/media/ppmgr/*
+
+AMLOGIC PM/SLEEP DRIVER SUPPORT
+M: Qiufang Dai <qiufang.dai@amlogic.com>
+F: drivers/amlogic/pm/*
+
+AMLOGIC WATCHDOG DRIVER SUPPORT
+M: Bo Yang <bo.yang@amlogic.com>
+F: drivers/amlogic/watchdog/*
+
+AMLOGIC LED DRIVER SUPPORT
+M: Bo Yang <bo.yang@amlogic.com>
+F: drivers/amlogic/led/*
+
+AMLOGIC JTAG DRIVER SUPPORT
+M: Bo Yang <bo.yang@amlogic.com>
+F: drivers/amlogic/jtag/*
+X: include/linux/amlogic/mmc_notify.h
+
+
+AMLOGIC AMLVIDEO DRIVER
+M: Guosong Zhou <guosong.zhou@amlogic.com>
+F: arch/arm64/configs/meson64_defconfig
+F: drivers/amlogic/media/video_processor/video_dev/Kconfig
+F: drivers/amlogic/media/video_processor/video_dev/Makefile
+F: drivers/amlogic/media/video_processor/video_dev/amlvideo.h
+F: drivers/amlogic/media/video_processor/video_dev/amlvideo.c
+F: drivers/amlogic/media/video_processor/video_dev/common/vfutil.c
+
+AMLOGIC SPICC DRIVER
+M: Sunny Luo <sunny.luo@amlogic.com>
+F: drivers/amlogic/spicc/spicc.c
+F: drivers/amlogic/spicc/spicc.h
+F: drivers/amlogic/spicc/Kconfig
+F: drivers/amlogic/spicc/Makefile
+
+AMLOGIC BT/WIFI
+M: Rongjun Chen <rongjun.chen@amlogic.com>
+F: drivers/amlogic/bluetooth/
+F: drivers/amlogic/wifi/
+
+AMLOGIC IONVIDEO DRIVER
+M: Guosong Zhou <guosong.zhou@amlogic.com>
+F: arch/arm64/boot/dts/amlogic/gxl_p212_1g.dts
+F: arch/arm64/boot/dts/amlogic/gxl_p212_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxm_q200_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxl_p400_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxm_p401_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxm_skt.dts
+F: arch/arm64/configs/meson64_defconfig
+F: drivers/amlogic/media/video_processor/Kconfig
+F: drivers/amlogic/media/video_processor/Makefile
+F: drivers/amlogic/media/video_processor/ionvideo/*
+
+AMLOGIC EMMC S805 DRIVER SUPPORT
+M: Nan Li <nan.li@amlogic.com>
+F: arch/arm/boot/dts/amlogic/meson8b.dtsi
+F: arch/arm/boot/dts/amlogic/meson8b_m200.dts
+F: drivers/amlogic/emmc/aml_sdhc_m8.c
+F: drivers/amlogic/emmc/aml_sdio.c
+F: drivers/amlogic/emmc/Kconfig
+F: drivers/amlogic/emmc/Makefile
+F: include/linux/amlogic/sd.h
+F: include/linux/amlogic/cpu_version.h
+
+AMLOGIC PINCTRL SUPPORT FOR M8B
+M: Xingyu Chen <xingyu.chen@amlogic.com>
+F: drivers/amlogic/pinctrl/pinctrl-meson8b.c
+
+AMLOGIC PWM DRIVER NEW FILES
+M: jian.hu <jian.hu@amlogic.com>
+F: drivers/amlogic/pwm/pwm_meson_util.h
+F: drivers/amlogic/pwm/pwm_meson_util.c
+
+AMLOGIC M400 BSP
+M: Peipeng Zhao <peipeng.zhao@amlogic.com>
+F: arch/arm/boot/dts/amlogic/meson8b_m400.dts
+
+AMLOGIC LOCAL TIMER
+M: Jianxin Pan <jianxin.pan@amlogic.com>
+F: drivers/amlogic/clocksource
+
+AMLOGIC AMVECM, PQ, HDR
+M: Mingliang Dong <mingliang.dong@amlogic.com>
+F: drivers/amlogic/media/enhancement/amvecm/amcm.c
+F: drivers/amlogic/media/enhancement/amvecm/amcm.h
+F: drivers/amlogic/media/enhancement/amvecm/amcm_regmap.h
+F: drivers/amlogic/media/enhancement/amvecm/amcsc.c
+F: drivers/amlogic/media/enhancement/amvecm/amcsc.h
+F: drivers/amlogic/media/enhancement/amvecm/amdolby_vision.c
+F: drivers/amlogic/media/enhancement/amvecm/amve.c
+F: drivers/amlogic/media/enhancement/amvecm/amve.h
+F: drivers/amlogic/media/enhancement/amvecm/amve_gamma_table.h
+F: drivers/amlogic/media/enhancement/amvecm/amvecm.c
+F: drivers/amlogic/media/enhancement/amvecm/amvecm_vlock_regmap.h
+F: drivers/amlogic/media/enhancement/amvecm/Kconfig
+F: drivers/amlogic/media/enhancement/amvecm/Makefile
+F: drivers/amlogic/media/enhancement/amvecm/dolby_vision/*
+F: drivers/amlogic/media/enhancement/amvecm/arch/*
+F: include/linux/amlogic/media/amvecm/*
+
+AMLOGIC GXL ADD SKT DTS
+M: Yun Cai <yun.cai@amlogic.com>
+F: arch/arm64/boot/dts/amlogic/gxl_skt.dts
+
+AMLOGIC AXG ADD PXP DTS
+M: Yun Cai <yun.cai@amlogic.com>
+F: arch/arm64/boot/dts/amlogic/axg_pxp.dts
+F: arch/arm64/boot/dts/amlogic/mesonaxg.dtsi
+
+AMLOGIC S805 audio
+M: Xing Wang <xing.wang@amlogic.com>
+F: arch/arm/boot/dts/amlogic/meson8b.dtsi
+F: arch/arm/boot/dts/amlogic/meson8b_m200.dts
+F: arch/arm/configs/meson32_defconfig
+F: arch/arm64/boot/dts/amlogic/gxl_p212_1g.dts
+F: arch/arm64/boot/dts/amlogic/gxl_p212_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxl_p400_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxl_p401_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxm_q200_2g.dts
+F: arch/arm64/boot/dts/amlogic/gxm_skt.dts
+F: drivers/amlogic/clk/m8b/clk_misc.c
+F: drivers/amlogic/pinctrl/pinctrl-meson8b.c
+F: include/dt-bindings/clock/meson8b-clkc.h
+F: sound/soc/amlogic/aml_meson.c
+F: sound/soc/amlogic/aml_pcm_dai.c
+F: sound/soc/codecs/amlogic/Kconfig
+F: sound/soc/codecs/amlogic/Makefile
+F: sound/soc/codecs/amlogic/aml_pmu3.c
+F: sound/soc/codecs/amlogic/aml_pmu3.h
+
+AMLOGIC MTD MESON8B DRIVER
+M:	Yonghui Yu <yonghui.yu@amlogic.com>
+F:	drivers/amlogic/mtd_meson8b/
+
+AMLOGIC PM/SLEEP M8B DRIVER SUPPORT
+M: Qiufang Dai <qiufang.dai@amlogic.com>
+F: drivers/amlogic/pm/m8b_pm.c
+F: drivers/amlogic/pm/lgcy_early_suspend.c
+
+AMLOGIC MESON8B ADD SKT DTS
+M:	Yun Cai <yun.cai@amlogic.com>
+F:	arch/arm/boot/dts/amlogic/meson8b_skt.dts
+
+AMLOGIC Audio codec driver
+M: Xing Wang <xing.wang@amlogic.com>
+F: arch/arm64/configs/meson64_defconfig
+F: include/sound/tas57xx.h
+F: sound/soc/codecs/amlogic/Kconfig
+F: sound/soc/codecs/amlogic/Makefile
+F: sound/soc/codecs/amlogic/tas5707.c
+F: sound/soc/codecs/amlogic/tas5707.h
