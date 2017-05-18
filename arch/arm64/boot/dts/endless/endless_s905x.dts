@@ -16,7 +16,7 @@
 /dts-v1/;
 
 #include <dt-bindings/interrupt-controller/arm-gic.h>
-#include "mesongxl.dtsi"
+#include "../amlogic/mesongxl.dtsi"
 / {
 	model = "Amlogic";
 	amlogic-dt-id = "gxl_p212_2g";

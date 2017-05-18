@@ -98,6 +98,12 @@ config ARCH_MESON
 	help
 	  This enables support for the Amlogic S905 SoCs.
 
+config ARCH_ENDLESS
+	bool "Endless S905X board"
+	help
+	  This enables support for the board S905X of Endless
+	  which is based on ARMv8 SoC of AMLogic, Inc.
+
 config ARCH_MVEBU
 	bool "Marvell EBU SoC Family"
 	select ARMADA_AP806_SYSCON
