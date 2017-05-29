@@ -36,10 +36,17 @@
 #define VDEC_MAX_BUFFERS		32
 
 /* This is used to store the encoded data */
-#define VDEC_ST_FIFO_SIZE	(3*1024*1024)
+#define VDEC_ST_FIFO_SIZE	(15*1024*1024)
 
 /* This is the default encoded v4l2_buffer size */
 #define VDEC_ENCODED_BUF_SIZE   (1*1024*1024)
+
+/* Decoder workbuffer */
+#define VDEC_HW_BUF_SIZE	(32*1024*1024)
+
+/* VP9 header */
+#define VP9_HEADER_SIZE		16
+#define VP9_FETCHBUF_SIZE	(512*1024)
 
 static int debug;
 module_param(debug, int, 0644);
@@ -100,10 +107,16 @@ enum eos_state {
 	EOS_DETECTED,
 };
 
-static struct vdec_fmt {
+enum vdec_stream_type {
+	VDEC_H264,
+	VDEC_VP9,
+	VDEC_NUM,
+};
+
+static struct vdec_fmt_cap {
 	const char *name;
 	u32 pixelformat;
-} formats[] = {
+} formats_cap[] = {
 	{
 		.name = "NV12",
 		.pixelformat = V4L2_PIX_FMT_NV12M,
@@ -114,16 +127,65 @@ static struct vdec_fmt {
 	},
 };
 
+static struct vdec_fmt_out {
+	const char *name;
+	u32 pixelformat;
+} formats_out[] = {
+	{
+		.name = "H264",
+		.pixelformat = V4L2_PIX_FMT_H264,
+	},
+	{
+		.name = "VP9",
+		.pixelformat = V4L2_PIX_FMT_VP9,
+	},
+
+};
+
+
+static struct vdec_ll_link {
+	const char *port_name;
+	int sbuf_type;
+	int vformat;
+	unsigned int vififo_low_level;
+} ll_link[] = {
+	{
+		.port_name = "amstream_vbuf",
+		.sbuf_type = PTS_TYPE_VIDEO,
+		.vformat = VFORMAT_H264,
+		.vififo_low_level = 256,
+	},
+	{
+		.port_name = "amstream_hevc",
+		.sbuf_type = PTS_TYPE_HEVC,
+		.vformat = VFORMAT_VP9,
+		.vififo_low_level = 512,
+	},
+};
+
+struct vdec_stream_data {
+	enum vdec_stream_type type;
+	stream_port_t *port;
+	stream_buf_t *sbuf;
+};
+
 struct vdec_ctx {
 	struct v4l2_fh		fh;
 	struct vdec_dev	*dev;
 	struct v4l2_m2m_ctx	*m2m_ctx;
 	struct task_struct *image_thread;
-	struct vdec_fmt *fmt;
+	struct vdec_fmt_cap *fmt;
+	struct vdec_ll_link *ll_link;
 	struct timer_list eos_idle_timer;
 	struct vframe_receiver_s vf_receiver;
 
 	void *buf_vaddr;
+
+	void *decoder_buf;
+	phys_addr_t decoder_buf_phys;
+
+	void *fetchbuf;
+	phys_addr_t fetchbuf_phys;
 
 	/* Protects concurrent access to:
 	 * eos_state and its relationship with v4l2_m2m source buf queue
@@ -134,6 +196,7 @@ struct vdec_ctx {
 	int src_bufs_size;
 	int src_bufs_cnt;
 	int dst_bufs_cnt;
+	struct vdec_stream_data stream;
 	struct vdec_buf src_bufs[VDEC_MAX_BUFFERS];
 	struct vdec_buf dst_bufs[VDEC_MAX_BUFFERS];
 
@@ -158,7 +221,7 @@ struct buffer_size_info {
 	unsigned int buffer_size[2];
 };
 
-static void get_buffer_size_info(struct vdec_fmt *fmt, u32 width, u32 height,
+static void get_buffer_size_info(struct vdec_fmt_cap *fmt, u32 width, u32 height,
 			struct buffer_size_info *i)
 {
 	/* GE2D can only work with output buffers with certain aligned widths */
@@ -237,24 +300,37 @@ static void mark_all_dst_done(struct vdec_ctx *ctx)
  *
  * The caller should hold data_lock.
  */
-static void send_eos_tail(struct vdec_ctx *ctx)
-{
-	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,
-		 "sending EOS tail to esparser\n");
-	ctx->eos_state = EOS_TAIL_SENT;
-	ctx->esparser_busy = true;
-	esparser_start_search(PARSER_VIDEO, ctx->eos_tail_buf_phys,
-			      EOS_TAIL_BUF_SIZE);
-}
 
 static void run_eos_idle_timer(struct vdec_ctx *ctx)
 {
 	mod_timer(&ctx->eos_idle_timer, jiffies + (HZ / 10));
 }
 
+static void send_eos_tail(struct vdec_ctx *ctx)
+{
+	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,
+		 "sending EOS tail to esparser\n");
+	ctx->eos_state = EOS_TAIL_SENT;
+	ctx->esparser_busy = true;
+
+	if (ctx->stream.type == VDEC_H264)
+		esparser_start_search(PARSER_VIDEO, ctx->eos_tail_buf_phys,
+				      EOS_TAIL_BUF_SIZE);
+
+	/*
+	 * No need for EOS tail when decoding VP9. We just run the timer to check for
+	 * the EOS condition
+	 */
+	if (ctx->stream.type == VDEC_VP9) {
+		ctx->eos_state = EOS_WAIT_IDLE;
+		run_eos_idle_timer(ctx);
+	}
+}
+
 static void eos_check_idle(unsigned long arg)
 {
 	struct vdec_ctx *ctx = (struct vdec_ctx *) arg;
+	unsigned int vififo_level = ctx->ll_link->vififo_low_level;
 
 	if (!ctx->src_streaming)
 		return;
@@ -262,18 +338,124 @@ static void eos_check_idle(unsigned long arg)
 	/* The VIFIFO level does not reach 0 at the end of playback, it
 	 * always seems to have a small amount of data there which does not
 	 * get flushed. So we use a low threshold to detect VIFIFO empty.
-	 * FIXME: experiment and check that 256 bytes is the upper limit here
+	 * FIXME: experiment and check that 256 / 512 bytes is the upper limit here
 	 * before the data is actually flushed. */
-	if (vf_peek(RECEIVER_NAME) ||
-	    vh264_vififo_level() > 256 ||
-	    vh264_output_is_starved()) {
-		run_eos_idle_timer(ctx);
-		return;
+
+	if (ctx->stream.type == VDEC_H264) {
+		if (vf_peek(RECEIVER_NAME) ||
+		    vh264_vififo_level() > vififo_level ||
+		    vh264_output_is_starved()) {
+			run_eos_idle_timer(ctx);
+			return;
+		}
+	}
+
+	if (ctx->stream.type == VDEC_VP9) {
+		if (vf_peek(RECEIVER_NAME) ||
+		    vp9_vififo_level() > vififo_level ||
+		    vp9_output_is_starved(RECEIVER_NAME, vififo_level)) {
+			run_eos_idle_timer(ctx);
+			return;
+		}
 	}
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "EOS detected\n");
 	ctx->eos_state = EOS_DETECTED;
 	mark_all_dst_done(ctx);
+}
+
+static int vp9_add_header(struct vb2_buffer *buf, struct vdec_ctx *ctx)
+{
+	uint8_t *dp;
+	uint8_t marker;
+	int dsize;
+	int num_frames, cur_frame;
+	int cur_mag, mag, mag_ptr;
+	int frame_size[8], tot_frame_size[8];
+	int total_datasize = 0;
+	int new_frame_size;
+	unsigned char *old_header = NULL;
+
+	dp = (uint8_t *) vb2_plane_vaddr(buf, 0);
+	dsize = vb2_get_plane_payload(buf, 0);
+
+	marker = dp[dsize - 1];
+	if ((marker & 0xe0) == 0xc0) {
+		num_frames = (marker & 0x7) + 1;
+		mag = ((marker >> 3) & 0x3) + 1;
+		mag_ptr = dsize - mag * num_frames - 2;
+		if (dp[mag_ptr] != marker) {
+			v4l2_err(&ctx->dev->v4l2_dev, "Wrong marker.\n");
+			return 0;
+		}
+		mag_ptr++;
+		for (cur_frame = 0; cur_frame < num_frames; cur_frame++) {
+			frame_size[cur_frame] = 0;
+			for (cur_mag = 0; cur_mag < mag; cur_mag++) {
+				frame_size[cur_frame] |= (dp[mag_ptr] << (cur_mag * 8));
+				mag_ptr++;
+			}
+			if (cur_frame == 0)
+				tot_frame_size[cur_frame] = frame_size[cur_frame];
+			else
+				tot_frame_size[cur_frame] = tot_frame_size[cur_frame - 1] + frame_size[cur_frame];
+			total_datasize += frame_size[cur_frame];
+		}
+	} else {
+		num_frames = 1;
+		frame_size[0] = dsize;
+		tot_frame_size[0] = dsize;
+		total_datasize = dsize;
+	}
+
+	new_frame_size = total_datasize + num_frames * VP9_HEADER_SIZE;
+	if (new_frame_size > VP9_FETCHBUF_SIZE) {
+		v4l2_err(&ctx->dev->v4l2_dev, "Not enough space in the fetchbuf. Required: %d\n", new_frame_size);
+		return 0;
+	}
+
+	memset(ctx->fetchbuf, 0, VP9_FETCHBUF_SIZE);
+	memcpy(ctx->fetchbuf, (const void __force *)dp, dsize);
+
+	for (cur_frame = num_frames - 1; cur_frame >= 0; cur_frame--) {
+		int framesize = frame_size[cur_frame];
+		int framesize_header = framesize + 4;
+		int oldframeoff = tot_frame_size[cur_frame] - framesize;
+		int outheaderoff =  oldframeoff + cur_frame * VP9_HEADER_SIZE;
+		uint8_t *fdata = ctx->fetchbuf + outheaderoff;
+		uint8_t *old_framedata = ctx->fetchbuf + oldframeoff;
+
+		memmove(fdata + VP9_HEADER_SIZE, old_framedata, framesize);
+
+		fdata[0] = (framesize_header >> 24) & 0xff;
+		fdata[1] = (framesize_header >> 16) & 0xff;
+		fdata[2] = (framesize_header >> 8) & 0xff;
+		fdata[3] = (framesize_header >> 0) & 0xff;
+		fdata[4] = ((framesize_header >> 24) & 0xff) ^0xff;
+		fdata[5] = ((framesize_header >> 16) & 0xff) ^0xff;
+		fdata[6] = ((framesize_header >> 8) & 0xff) ^0xff;
+		fdata[7] = ((framesize_header >> 0) & 0xff) ^0xff;
+		fdata[8] = 0;
+		fdata[9] = 0;
+		fdata[10] = 0;
+		fdata[11] = 1;
+		fdata[12] = 'A';
+		fdata[13] = 'M';
+		fdata[14] = 'L';
+		fdata[15] = 'V';
+
+		if (!old_header) {
+			/* nothing */
+		} else if (old_header > fdata + 16 + framesize) {
+			v4l2_err(&ctx->dev->v4l2_dev, "Data has gaps. Set to 0.\n");
+			memset(fdata + 16 + framesize, 0, (old_header - fdata + 16 + framesize));
+		} else if (old_header < fdata + 16 + framesize) {
+			v4l2_err(&ctx->dev->v4l2_dev, "Error. Data overwritten. Continuing.\n");
+		}
+		old_header = fdata;
+	}
+
+	return new_frame_size;
 }
 
 /* Try to send the next source buffer to the parser.
@@ -316,6 +498,13 @@ static void parse_next_buffer(struct vdec_ctx *ctx)
 
 	ctx->esparser_busy = true;
 
+	if (ctx->stream.type == VDEC_VP9) {
+		size = vp9_add_header(buf, ctx);
+		if (!size)
+			return;
+		phys_addr = ctx->fetchbuf_phys;
+	}
+
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,
 		 "parsing at pts %li.%lis offset %zu\n",
 		 buf->v4l2_buf.timestamp.tv_sec,
@@ -326,6 +515,7 @@ static void parse_next_buffer(struct vdec_ctx *ctx)
 
 	pts_checkin_offset_us64(PTS_TYPE_VIDEO, ctx->parsed_len, ts);
 	ctx->parsed_len += size;
+
 	esparser_start_search(PARSER_VIDEO, phys_addr, size);
 }
 
@@ -377,6 +567,32 @@ static void h264_params_cb(void *data, int status, u32 width, u32 height)
 		v4l2_err(&ctx->dev->v4l2_dev, "H264 params error.\n");
 		return;
 	}
+
+	ctx->frame_width = width;
+	ctx->frame_height = height;
+	v4l2_event_queue_fh(&ctx->fh, &ev);
+	wake_up(&ctx->esparser_queue);
+}
+
+static void vp9_params_cb(void *data, int status, u32 width, u32 height)
+{
+	struct vdec_ctx *ctx = data;
+	const struct v4l2_event ev = {
+		.type = V4L2_EVENT_SOURCE_CHANGE,
+		.u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION,
+	};
+
+	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev,
+		 "vp9_params_cb status=%d w=%d h=%d\n",
+		 status, width, height);
+
+	if (status) {
+		v4l2_err(&ctx->dev->v4l2_dev, "VP9 params error.\n");
+		return;
+	}
+
+	if ((ctx->frame_width == width) && (ctx->frame_height == height))
+		return;
 
 	ctx->frame_width = width;
 	ctx->frame_height = height;
@@ -447,14 +663,14 @@ static int vidioc_enum_fmt_vid_cap(struct file *file, void *priv,
 				   struct v4l2_fmtdesc *f)
 {
 	struct vdec_ctx *ctx = file2ctx(file);
-	struct vdec_fmt *fmt;
+	struct vdec_fmt_cap *fmt;
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "enum_fmt_vid_cap\n");
 
-	if (f->index >= ARRAY_SIZE(formats))
+	if (f->index >= ARRAY_SIZE(formats_cap))
 		return -EINVAL;
 
-	fmt = &formats[f->index];
+	fmt = &formats_cap[f->index];
 	strlcpy(f->description, fmt->name, sizeof(f->description));
 	f->pixelformat = fmt->pixelformat;
 	return 0;
@@ -464,13 +680,17 @@ static int vidioc_enum_fmt_vid_out(struct file *file, void *priv,
 				   struct v4l2_fmtdesc *f)
 {
 	struct vdec_ctx *ctx = file2ctx(file);
+	struct vdec_fmt_out *fmt;
+
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "enum_fmt_vid_out\n");
 
-        if (f->index != 0)
+        if (f->index >= ARRAY_SIZE(formats_out))
 		return -EINVAL;
 
-	snprintf(f->description, sizeof(f->description), "H264");
-	f->pixelformat = V4L2_PIX_FMT_H264;
+	fmt = &formats_out[f->index];
+	strlcpy(f->description, fmt->name, sizeof(f->description));
+	f->pixelformat = fmt->pixelformat;
+
 	return 0;
 }
 
@@ -480,7 +700,10 @@ static int vidioc_g_fmt_vid_out(struct file *file, void *priv,
 	struct vdec_ctx *ctx = file2ctx(file);
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "g_fmt_vid_out\n");
 
-	f->fmt.pix_mp.pixelformat = V4L2_PIX_FMT_H264;
+	if (ctx->stream.type == VDEC_H264)
+		f->fmt.pix_mp.pixelformat = V4L2_PIX_FMT_H264;
+	else
+		f->fmt.pix_mp.pixelformat = V4L2_PIX_FMT_VP9;
 	f->fmt.pix_mp.width = f->fmt.pix_mp.height = 0;
 	f->fmt.pix_mp.field = V4L2_FIELD_NONE;
 	f->fmt.pix_mp.num_planes = 1;
@@ -509,7 +732,7 @@ static int vidioc_g_fmt_vid_cap(struct file *file, void *priv,
 static int try_fmt_vid_cap(struct vdec_ctx *ctx, struct v4l2_format *f,
 			   bool set)
 {
-	struct vdec_fmt *fmt = &formats[0];
+	struct vdec_fmt_cap *fmt = &formats_cap[0];
 	int i;
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "ioc_try_fmt_vid_cap\n");
@@ -517,9 +740,9 @@ static int try_fmt_vid_cap(struct vdec_ctx *ctx, struct v4l2_format *f,
 	/* V4L2 specification suggests the driver corrects the format struct
 	* if any of the dimensions is unsupported */
 
-	for (i = 0; i < ARRAY_SIZE(formats); i++) {
-		if (formats[i].pixelformat == f->fmt.pix_mp.pixelformat)
-			fmt = &formats[i];
+	for (i = 0; i < ARRAY_SIZE(formats_cap); i++) {
+		if (formats_cap[i].pixelformat == f->fmt.pix_mp.pixelformat)
+			fmt = &formats_cap[i];
 	}
 
 	if (set)
@@ -546,7 +769,10 @@ static int vidioc_try_fmt_vid_out(struct file *file, void *priv,
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "ioc_try_fmt_vid_out\n");
 
-	f->fmt.pix_mp.pixelformat = V4L2_PIX_FMT_H264;
+	if ((f->fmt.pix_mp.pixelformat != V4L2_PIX_FMT_H264) &&
+	    (f->fmt.pix_mp.pixelformat != V4L2_PIX_FMT_VP9))
+		return -EINVAL;
+
 	f->fmt.pix_mp.num_planes = 1;
 	f->fmt.pix_mp.plane_fmt[0].bytesperline = 0;
 
@@ -584,8 +810,15 @@ static int vidioc_s_fmt_vid_out(struct file *file, void *priv,
 
 	ret = vidioc_try_fmt_vid_out (file, priv, f);
 
-	if (ret == 0)
+	if (ret == 0) {
 		ctx->src_bufs_size = f->fmt.pix_mp.plane_fmt[0].sizeimage;
+		if (f->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_H264)
+			ctx->stream.type = VDEC_H264;
+		else if (f->fmt.pix_mp.pixelformat == V4L2_PIX_FMT_VP9)
+			ctx->stream.type = VDEC_VP9;
+		else
+			return -EINVAL;
+	}
 
         return ret;
 }
@@ -733,23 +966,82 @@ static const struct v4l2_ioctl_ops vdec_ioctl_ops = {
 static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 {
 	struct vdec_ctx *ctx = vb2_get_drv_priv(vq);
-	stream_port_t *port = amstream_find_port("amstream_vbuf");
-	stream_buf_t *sbuf = get_buf_by_type(BUF_TYPE_VIDEO);
+	stream_port_t *port;
+	stream_buf_t *sbuf;
 	unsigned long flags;
 	int ret;
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "src_start_streaming\n");
 
+	ctx->ll_link = &ll_link[ctx->stream.type];
+	ctx->stream.port = amstream_find_port(ctx->ll_link->port_name);
+	ctx->stream.sbuf = get_buf_by_type(ctx->ll_link->sbuf_type);
+
+	if (!ctx->stream.port || !ctx->stream.sbuf)
+		return -ENOENT;
+
+	port = ctx->stream.port;
+	sbuf = ctx->stream.sbuf;
+
+	ctx->buf_vaddr = dma_alloc_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE,
+					    (dma_addr_t *) &sbuf->buf_start, GFP_KERNEL);
+
+	if (!ctx->buf_vaddr)
+		return -ENOMEM;
+
+	sbuf->buf_size = sbuf->default_buf_size = VDEC_ST_FIFO_SIZE;
+	sbuf->flag = BUF_FLAG_IOMEM;
+
 	amstream_port_open(port);
 	/* enable sync_outside and pts_outside */
 	amstream_dec_info.param = (void *) 0x3;
 
-	port->vformat = VFORMAT_H264;
+	port->vformat = ctx->ll_link->vformat;
 	port->flag |= PORT_FLAG_VFORMAT;
+
+	if (ctx->stream.type == VDEC_VP9) {
+		ctx->decoder_buf = dma_alloc_coherent(ctx->dev->v4l2_dev.dev, VDEC_HW_BUF_SIZE,
+						      &ctx->decoder_buf_phys,
+						      GFP_KERNEL);
+		if (!ctx->decoder_buf) {
+			ret = -ENOMEM;
+			goto err_free_sbuf;
+		}
+
+		vdec_set_resource(ctx->decoder_buf_phys,
+				  ctx->decoder_buf_phys + VDEC_HW_BUF_SIZE - 1,
+				  ctx->dev->v4l2_dev.dev);
+
+		vp9_set_params_cb(ctx, vp9_params_cb);
+
+		/*
+		 * Working buffer for frame data + headers
+		 */
+		ctx->fetchbuf = dma_alloc_coherent(ctx->dev->v4l2_dev.dev, VP9_FETCHBUF_SIZE,
+						   &ctx->fetchbuf_phys,
+						   GFP_KERNEL);
+		if (!ctx->fetchbuf) {
+			ret = -ENOMEM;
+			goto err_free_vdec;
+		}
+	}
+
 	ret = video_port_init(port, sbuf);
-	if (ret) {
-		amstream_port_release(amstream_find_port("amstream_vbuf"));
-		return ret;
+	if (ret)
+		goto err_free_fetchbuf;
+
+	if (ctx->stream.type == VDEC_H264) {
+		vh264_set_params_cb(ctx, h264_params_cb);
+		ctx->eos_tail_buf = dma_alloc_coherent(ctx->dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE,
+						       &ctx->eos_tail_buf_phys,
+						       GFP_KERNEL);
+		if (!ctx->eos_tail_buf) {
+			ret = -ENOMEM;
+			goto err_free_sbuf;
+		}
+
+		memset(ctx->eos_tail_buf, 0, EOS_TAIL_BUF_SIZE);
+		memcpy(ctx->eos_tail_buf, eos_tail_data, sizeof(eos_tail_data));
 	}
 
 	ctx->frame_width = ctx->frame_height = 0;
@@ -763,6 +1055,18 @@ static int vdec_src_start_streaming(struct vb2_queue *vq, unsigned int count)
 	spin_unlock_irqrestore(&ctx->data_lock, flags);
 
 	return 0;
+
+err_free_fetchbuf:
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, VP9_FETCHBUF_SIZE, ctx->fetchbuf,
+			  ctx->fetchbuf_phys);
+err_free_vdec:
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_HW_BUF_SIZE, ctx->decoder_buf,
+			  ctx->decoder_buf_phys);
+err_free_sbuf:
+	amstream_port_release(port);
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
+			  sbuf->buf_start);
+	return ret;
 }
 
 static int vdec_src_stop_streaming(struct vb2_queue *vq)
@@ -772,9 +1076,21 @@ static int vdec_src_stop_streaming(struct vb2_queue *vq)
 	kthread_park(ctx->image_thread);
 	del_timer_sync(&ctx->eos_idle_timer);
 
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_HW_BUF_SIZE, ctx->decoder_buf,
+			  ctx->decoder_buf_phys);
+
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
+		          ctx->stream.sbuf->buf_start);
+
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, VP9_FETCHBUF_SIZE, ctx->fetchbuf,
+			  ctx->fetchbuf_phys);
+
+	dma_free_coherent(ctx->dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE, ctx->eos_tail_buf,
+			  ctx->eos_tail_buf_phys);
+
 	/* FIXME: calls video_port_release internally, which means the API
 	 * is not really symmetrical with the init routines. */
-	amstream_port_release(amstream_find_port("amstream_vbuf"));
+	amstream_port_release(ctx->stream.port);
 	ctx->esparser_busy = false;
 	ctx->eos_state = EOS_NONE;
 
@@ -975,7 +1291,27 @@ static int queue_init(void *priv, struct vb2_queue *src_vq, struct vb2_queue *ds
 	return vb2_queue_init(dst_vq);
 }
 
-static bool image_buffers_ready(struct vdec_ctx *ctx) {
+static bool image_buffers_ready(struct vdec_ctx *ctx)
+{
+	struct buffer_size_info buf_info;
+	struct vb2_queue *vq;
+	int i;
+
+	/*
+	 * If the allocated buffers (vq->plane_sizes) do not match the size of
+	 * the decoded image (buf_info.buffer_size), leave the images in the
+	 * queue (without treating them as ready) in expectation that the
+	 * output buffers will be later reallocated.
+	 */
+
+	vq = v4l2_m2m_get_vq(ctx->m2m_ctx, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+	get_buffer_size_info(ctx->fmt, ctx->frame_width,
+			     ctx->frame_height, &buf_info);
+
+	for (i = 0; i < buf_info.num_planes; i++)
+		if (buf_info.buffer_size[i] != vq->plane_sizes[i])
+			return false;
+
 	return vf_peek(RECEIVER_NAME) &&
 		v4l2_m2m_num_dst_bufs_ready(ctx->m2m_ctx) > 0;
 }
@@ -1076,12 +1412,8 @@ static int meson_vdec_open(struct file *file)
 	struct vdec_dev *dev = video_drvdata(file);
 	struct vdec_ctx *ctx = NULL;
 	int ret = 0;
-	stream_port_t *port = amstream_find_port("amstream_vbuf");
-	stream_buf_t *sbuf = get_buf_by_type(BUF_TYPE_VIDEO);
 
 	v4l2_dbg(1, debug, &dev->v4l2_dev, "vdec_open\n");
-	if (!port)
-		return -ENOENT;
 
 	if (mutex_lock_interruptible(&dev->dev_mutex))
 		return -ERESTARTSYS;
@@ -1098,13 +1430,12 @@ static int meson_vdec_open(struct file *file)
 	}
 
 	esparser_set_search_done_cb(ctx, parser_cb);
-	vh264_set_params_cb(ctx, h264_params_cb);
 	v4l2_fh_init(&ctx->fh, video_devdata(file));
 	file->private_data = &ctx->fh;
 	ctx->dev = dev;
 	ctx->esparser_busy = false;
 	ctx->parsed_len = 0;
-	ctx->fmt = &formats[0];
+	ctx->fmt = &formats_cap[0];
 	spin_lock_init(&ctx->data_lock);
 	init_waitqueue_head(&ctx->esparser_queue);
 
@@ -1112,32 +1443,10 @@ static int meson_vdec_open(struct file *file)
 	ctx->eos_idle_timer.function = eos_check_idle;
 	ctx->eos_idle_timer.data = (unsigned long) ctx;
 
-	ctx->buf_vaddr = dma_alloc_coherent(dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE,
-					    (dma_addr_t *) &sbuf->buf_start, GFP_KERNEL);
-
-	if (!ctx->buf_vaddr) {
-		ret = -ENOMEM;
-		goto err_free_ctx;
-	}
-
-	ctx->eos_tail_buf = dma_alloc_coherent(dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE,
-					       &ctx->eos_tail_buf_phys,
-					       GFP_KERNEL);
-	if (!ctx->eos_tail_buf) {
-		ret = -ENOMEM;
-		goto err_free_buf;
-	}
-
-	memset(ctx->eos_tail_buf, 0, EOS_TAIL_BUF_SIZE);
-	memcpy(ctx->eos_tail_buf, eos_tail_data, sizeof(eos_tail_data));
-
-	sbuf->buf_size = sbuf->default_buf_size = VDEC_ST_FIFO_SIZE;
-	sbuf->flag = BUF_FLAG_IOMEM;
-
 	ctx->m2m_ctx = v4l2_m2m_ctx_init(dev->m2m_dev, ctx, &queue_init);
 	if (IS_ERR(ctx->m2m_ctx)) {
 		ret = PTR_ERR(ctx->m2m_ctx);
-		goto err_free_buf2;
+		goto err_free_ctx;
 	}
 
 	v4l2_fh_add(&ctx->fh);
@@ -1162,12 +1471,6 @@ open_unlock:
 err_del_fh:
 	v4l2_fh_del(&ctx->fh);
 
-err_free_buf2:
-	dma_free_coherent(dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE, ctx->eos_tail_buf,
-			  ctx->eos_tail_buf_phys);
-err_free_buf:
-	dma_free_coherent(dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
-			  sbuf->buf_start);
 err_free_ctx:
 	kfree(ctx);
 	goto open_unlock;
@@ -1177,7 +1480,6 @@ static int meson_vdec_release(struct file *file)
 {
 	struct vdec_dev *dev = video_drvdata(file);
 	struct vdec_ctx *ctx = file2ctx(file);
-	stream_buf_t *sbuf = get_buf_by_type(BUF_TYPE_VIDEO);
 
 	v4l2_dbg(1, debug, &ctx->dev->v4l2_dev, "vdec_release\n");
 
@@ -1187,11 +1489,6 @@ static int meson_vdec_release(struct file *file)
 	v4l2_fh_exit(&ctx->fh);
 	mutex_lock(&dev->dev_mutex);
 	v4l2_m2m_ctx_release(ctx->m2m_ctx);
-	dma_free_coherent(ctx->dev->v4l2_dev.dev, VDEC_ST_FIFO_SIZE, ctx->buf_vaddr,
-		          sbuf->buf_start);
-
-	dma_free_coherent(ctx->dev->v4l2_dev.dev, EOS_TAIL_BUF_SIZE, ctx->eos_tail_buf,
-		ctx->eos_tail_buf_phys);
 
 	dev->open = false;
 	mutex_unlock(&dev->dev_mutex);

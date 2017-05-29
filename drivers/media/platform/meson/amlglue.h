@@ -16,5 +16,8 @@ void esparser_start_search(u32 parser_type, u32 phys_addr, u32 len);
 
 void esparser_set_search_done_cb(void *data, void *cb);
 void vh264_set_params_cb(void *data, void *cb);
+void vp9_set_params_cb(void *data, void *cb);
 bool vh264_output_is_starved(void);
 int vh264_vififo_level(void);
+bool vp9_output_is_starved(const char *receiver, unsigned int low_level);
+unsigned int vp9_vififo_level(void);
