@@ -7,14 +7,14 @@ config BCMDHD
 config BCMDHD_FW_PATH
 	depends on BCMDHD
 	string "Firmware path"
-	default "/lib/firmware/brcm/ap6356s/fw_bcm4356a2_ag.bin"
+	default "/lib/firmware/brcm/"
 	---help---
 	  Path to the firmware file.
 
 config BCMDHD_NVRAM_PATH
 	depends on BCMDHD
 	string "NVRAM path"
-	default "/lib/firmware/brcm/ap6356s/nvram_ap6356.txt"
+	default "/lib/firmware/brcm/"
 	---help---
 	  Path to the calibration file.
 
