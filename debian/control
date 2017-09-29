@@ -10,19 +10,6 @@ Vcs-Svn: svn://anonscm.debian.org/svn/kernel/dists/trunk/linux/
 Vcs-Browser: http://anonscm.debian.org/viewvc/kernel/dists/trunk/linux/
 Homepage: https://www.kernel.org/
 
-Package: linux-libc-dev
-Architecture: armhf
-Section: devel
-Provides: linux-kernel-headers
-Depends: ${misc:Depends}
-Replaces: linux-kernel-headers
-Conflicts: linux-kernel-headers
-Description: Linux support headers for userspace development
- This package provides userspaces headers from the Linux kernel.  These
- headers are used by the installed headers for GNU libc and other system
- libraries.
-Multi-Arch: same
-
 Package: linux-headers-3.14-2-all
 Architecture: armhf
 Depends: linux-headers-3.14-2-all-${kernel:Arch} (= ${binary:Version}), ${misc:Depends}
