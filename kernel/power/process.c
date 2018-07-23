@@ -69,7 +69,9 @@ static int try_to_freeze_tasks(bool user_only)
 #ifdef CONFIG_PM_SLEEP
 			pm_get_active_wakeup_sources(suspend_abort,
 				MAX_SUSPEND_ABORT_LEN);
+#ifdef CONFIG_SUSPEND
 			log_suspend_abort_reason(suspend_abort);
+#endif
 #endif
 			wakeup = true;
 			break;

@@ -74,8 +74,10 @@ int syscore_suspend(void)
 	return 0;
 
  err_out:
+#ifdef CONFIG_SUSPEND
 	log_suspend_abort_reason("System core suspend callback %pF failed",
 		ops->suspend);
+#endif
 	pr_err("PM: System core suspend callback %pF failed.\n", ops->suspend);
 
 	list_for_each_entry_continue(ops, &syscore_ops_list, node)

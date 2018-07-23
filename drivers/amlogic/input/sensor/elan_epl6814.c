@@ -1188,11 +1188,13 @@ static int elan_sensor_probe(struct i2c_client *client,
 		goto err_sensor_setup;
 	}
 
+#ifdef CONFIG_SUSPEND
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	epld->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
 	epld->early_suspend.suspend = elan_sensor_early_suspend;
 	epld->early_suspend.resume = elan_sensor_late_resume;
 	register_early_suspend(&epld->early_suspend);
+#endif
 #endif
 
 	sensor_dev = platform_device_register_simple(ELAN_LS_6814, -1, NULL, 0);
