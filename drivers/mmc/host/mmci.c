@@ -1821,7 +1821,9 @@ static int mmci_runtime_resume(struct device *dev)
 #endif
 
 static const struct dev_pm_ops mmci_dev_pm_ops = {
+#ifdef CONFIG_SUSPEND
 	SET_SYSTEM_SLEEP_PM_OPS(mmci_suspend, mmci_resume)
+#endif
 	SET_RUNTIME_PM_OPS(mmci_runtime_suspend, mmci_runtime_resume, NULL)
 };
 

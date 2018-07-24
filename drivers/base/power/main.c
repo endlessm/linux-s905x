@@ -1025,7 +1025,9 @@ static int dpm_suspend_noirq(pm_message_t state)
 		if (pm_wakeup_pending()) {
 			pm_get_active_wakeup_sources(suspend_abort,
 				MAX_SUSPEND_ABORT_LEN);
+#ifdef CONFIG_SUSPEND
 			log_suspend_abort_reason(suspend_abort);
+#endif
 			error = -EBUSY;
 			break;
 		}
@@ -1112,7 +1114,9 @@ static int dpm_suspend_late(pm_message_t state)
 		if (pm_wakeup_pending()) {
 			pm_get_active_wakeup_sources(suspend_abort,
 				MAX_SUSPEND_ABORT_LEN);
+#ifdef CONFIG_SUSPEND
 			log_suspend_abort_reason(suspend_abort);
+#endif
 			error = -EBUSY;
 			break;
 		}
@@ -1202,7 +1206,9 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 	if (pm_wakeup_pending()) {
 		pm_get_active_wakeup_sources(suspend_abort,
 			MAX_SUSPEND_ABORT_LEN);
+#ifdef CONFIG_SUSPEND
 		log_suspend_abort_reason(suspend_abort);
+#endif
 		async_error = -EBUSY;
 		goto Complete;
 	}
